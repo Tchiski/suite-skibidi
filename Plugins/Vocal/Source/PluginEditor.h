@@ -17,14 +17,24 @@ private:
     VocalProcessor& audioProcessor;
     juce::ComboBox presetBox;
 
-    tchk::Toggle levelOn, deessOn, eqOn, compOn, warmOn, dblOn, delayOn, verbOn;
-    tchk::Knob levelAmt, deessFreq, deessAmt, lowcut, mud, presence, air, compAmt, compSpeed, warmth,
+    // Shows the sung note, the note it is tuned to and the correction in cents
+    struct NoteDisplay : public juce::Component
+    {
+        explicit NoteDisplay (tchk::AutoTune& t) : tune (t) {}
+        void paint (juce::Graphics&) override;
+        tchk::AutoTune& tune;
+        float shownCents = 0.0f;
+    };
+
+    tchk::Toggle tuneOn, levelOn, deessOn, eqOn, compOn, warmOn, dblOn, delayOn, verbOn;
+    tchk::Knob tuneSpeed, tuneAmount, levelAmt, deessFreq, deessAmt, lowcut, mud, presence, air, compAmt, compSpeed, warmth,
                dblAmt, dblWidth, delayMix, delayFb, verbMix, verbSize, input, output;
-    tchk::Choice delayDiv;
+    tchk::Choice delayDiv, tuneKey, tuneScale;
+    NoteDisplay noteDisplay;
     tchk::CurveDisplay curve;
     tchk::Meter levelMeter, deessMeter, compMeter, inMeter, outMeter;
 
-    juce::Rectangle<int> levelArea, deessArea, eqArea, compArea, warmArea, dblArea, inArea, delayArea, verbArea, outArea;
+    juce::Rectangle<int> tuneArea, levelArea, deessArea, eqArea, compArea, warmArea, dblArea, inArea, delayArea, verbArea, outArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VocalEditor)
 };

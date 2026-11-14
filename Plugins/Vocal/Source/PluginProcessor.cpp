@@ -16,6 +16,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout VocalProcessor::createParame
     ParamList p;
     p.add ("input", "Input", -18.0f, 18.0f, 0.0f, Unit::dB);
 
+    p.addBool ("tune_on", "Autotune On", false);
+    p.addChoice ("tune_key", "Autotune Key", tchk::AutoTune::keyNames(), 0);
+    p.addChoice ("tune_scale", "Autotune Scale", tchk::AutoTune::scaleNames(), 0);
+    p.add ("tune_speed", "Autotune Speed", 0.0f, 400.0f, 20.0f, Unit::ms, 0.4f);
+    p.add ("tune_amount", "Autotune Amount", 0.0f, 1.0f, 1.0f, Unit::percent);
+
     p.addBool ("level_on", "Auto-Level On", true);
     p.add ("level_amt", "Auto-Level Amount", 0.0f, 1.0f, 0.5f, Unit::percent);
 
@@ -55,20 +61,43 @@ juce::AudioProcessorValueTreeState::ParameterLayout VocalProcessor::createParame
 
 juce::StringArray VocalProcessor::getPresetNames()
 {
-    return { "Rap lead", "Rap douce / melo", "Chant pop", "Backs / choeurs", "Adlibs", "Voix podcast", "Lo-fi / radio" };
+    return { "Rap lead", "Rap douce / melo", "Chant pop", "Backs / choeurs", "Adlibs", "Voix podcast", "Lo-fi / radio",
+             // artist-style presets (inspired by their usual vocal sound)
+             "Travis Scott", "Drake", "Kanye West (808s)", "Future", "The Weeknd", "PNL", "Jul", "Ninho", "Damso" };
 }
 
 void VocalProcessor::applyPreset (int index)
 {
-    struct P { float lvl, dsf, dsa, lc, mud, pres, air, comp, speed, warm; bool dbl; float dbla, dblw; bool dly; float dmix; int div; float fb; float vmix, vsize; };
+    struct P { float lvl, dsf, dsa, lc, mud, pres, air, comp, speed, warm; bool dbl; float dbla, dblw; bool dly; float dmix; int div; float fb; float vmix, vsize;
+               bool tune; float tspeed, tamt; };
     static const P presets[] = {
-        { 0.6f, 6500, 0.5f, 100, 0.4f, 3.0f, 3.0f, 0.65f, 0.7f, 0.25f, false, 0.3f, 0.8f, false, 0.15f, 1, 0.3f, 0.10f, 0.40f },
-        { 0.5f, 6000, 0.4f, 90, 0.3f, 2.0f, 3.5f, 0.50f, 0.5f, 0.20f, true, 0.25f, 0.7f, true, 0.18f, 1, 0.35f, 0.22f, 0.60f },
-        { 0.5f, 6500, 0.45f, 90, 0.3f, 2.5f, 4.0f, 0.50f, 0.5f, 0.15f, false, 0.3f, 0.8f, true, 0.12f, 0, 0.3f, 0.25f, 0.65f },
-        { 0.7f, 6000, 0.6f, 150, 0.5f, 0.0f, 3.0f, 0.70f, 0.6f, 0.20f, true, 0.6f, 1.0f, false, 0.1f, 1, 0.3f, 0.30f, 0.70f },
-        { 0.6f, 6500, 0.5f, 200, 0.5f, 4.0f, 2.0f, 0.70f, 0.8f, 0.40f, true, 0.4f, 1.0f, true, 0.30f, 2, 0.45f, 0.25f, 0.50f },
-        { 0.8f, 5500, 0.4f, 80, 0.4f, 2.0f, 1.0f, 0.60f, 0.4f, 0.10f, false, 0.3f, 0.8f, false, 0.1f, 1, 0.3f, 0.00f, 0.30f },
-        { 0.6f, 6000, 0.3f, 400, 0.6f, 6.0f, -6.0f, 0.75f, 0.7f, 0.70f, false, 0.3f, 0.8f, true, 0.20f, 1, 0.4f, 0.15f, 0.30f },
+        //  lvl   ds-freq ds-amt lowcut mud  pres  air   comp  speed warm  dbl    dbl-a dbl-w  delay  d-mix div fb     v-mix v-size tune   t-ms  t-amt
+        { 0.6f, 6500, 0.5f,  100, 0.4f, 3.0f, 3.0f,  0.65f, 0.7f, 0.25f, false, 0.3f,  0.8f, false, 0.15f, 1, 0.30f, 0.10f, 0.40f, false, 20,  1.0f }, // Rap lead
+        { 0.5f, 6000, 0.4f,   90, 0.3f, 2.0f, 3.5f,  0.50f, 0.5f, 0.20f, true,  0.25f, 0.7f, true,  0.18f, 1, 0.35f, 0.22f, 0.60f, false, 20,  1.0f }, // Rap douce / melo
+        { 0.5f, 6500, 0.45f,  90, 0.3f, 2.5f, 4.0f,  0.50f, 0.5f, 0.15f, false, 0.3f,  0.8f, true,  0.12f, 0, 0.30f, 0.25f, 0.65f, false, 20,  1.0f }, // Chant pop
+        { 0.7f, 6000, 0.6f,  150, 0.5f, 0.0f, 3.0f,  0.70f, 0.6f, 0.20f, true,  0.6f,  1.0f, false, 0.10f, 1, 0.30f, 0.30f, 0.70f, false, 20,  1.0f }, // Backs / choeurs
+        { 0.6f, 6500, 0.5f,  200, 0.5f, 4.0f, 2.0f,  0.70f, 0.8f, 0.40f, true,  0.4f,  1.0f, true,  0.30f, 2, 0.45f, 0.25f, 0.50f, false, 20,  1.0f }, // Adlibs
+        { 0.8f, 5500, 0.4f,   80, 0.4f, 2.0f, 1.0f,  0.60f, 0.4f, 0.10f, false, 0.3f,  0.8f, false, 0.10f, 1, 0.30f, 0.00f, 0.30f, false, 20,  1.0f }, // Voix podcast
+        { 0.6f, 6000, 0.3f,  400, 0.6f, 6.0f, -6.0f, 0.75f, 0.7f, 0.70f, false, 0.3f,  0.8f, true,  0.20f, 1, 0.40f, 0.15f, 0.30f, false, 20,  1.0f }, // Lo-fi / radio
+        // --- artist styles ---
+        // Travis Scott: hard, instant autotune, dark and wide, drowned in delay + big reverb
+        { 0.6f, 6000, 0.5f,  120, 0.45f, 2.0f, 1.5f, 0.70f, 0.7f, 0.35f, true,  0.35f, 1.0f, true,  0.26f, 1, 0.50f, 0.32f, 0.88f, true,  0,   1.0f },
+        // Drake: intimate and smooth, subtle tuning, warm low-mids, short polished space
+        { 0.6f, 6000, 0.45f,  80, 0.2f,  1.5f, 2.5f, 0.60f, 0.4f, 0.25f, false, 0.2f,  0.6f, true,  0.10f, 0, 0.25f, 0.16f, 0.55f, true,  70,  0.6f },
+        // Kanye West (808s & Heartbreak era): robotic tuning, saturated, cold echoes
+        { 0.6f, 6500, 0.4f,  110, 0.35f, 2.5f, 2.0f, 0.70f, 0.6f, 0.45f, true,  0.30f, 0.8f, true,  0.20f, 0, 0.40f, 0.30f, 0.78f, true,  0,   1.0f },
+        // Future: fast tuning, dark and gritty, mid-forward, 1/8 echoes
+        { 0.6f, 6000, 0.5f,  120, 0.4f,  3.0f, 0.5f, 0.70f, 0.7f, 0.50f, true,  0.35f, 0.9f, true,  0.22f, 2, 0.40f, 0.22f, 0.70f, true,  5,   1.0f },
+        // The Weeknd: airy and bright, medium tuning, lush reverb, dotted echoes
+        { 0.5f, 6500, 0.45f,  90, 0.25f, 2.0f, 4.5f, 0.55f, 0.5f, 0.15f, true,  0.25f, 0.8f, true,  0.18f, 1, 0.35f, 0.34f, 0.92f, true,  30,  0.8f },
+        // PNL: dreamy, heavy tuning, wide doubler, huge reverb and long echoes
+        { 0.6f, 6000, 0.5f,  110, 0.35f, 2.0f, 3.0f, 0.65f, 0.5f, 0.30f, true,  0.40f, 1.0f, true,  0.25f, 0, 0.50f, 0.42f, 0.95f, true,  10,  1.0f },
+        // Jul: instant robotic tuning, very present and bright, tight compression, little space
+        { 0.7f, 6500, 0.55f, 130, 0.4f,  4.0f, 3.0f, 0.75f, 0.8f, 0.25f, false, 0.3f,  0.8f, true,  0.14f, 2, 0.30f, 0.12f, 0.45f, true,  0,   1.0f },
+        // Ninho: clean modern tuning, upfront and polished
+        { 0.6f, 6500, 0.5f,  110, 0.35f, 3.0f, 2.5f, 0.70f, 0.6f, 0.25f, false, 0.3f,  0.8f, true,  0.12f, 2, 0.30f, 0.18f, 0.55f, true,  15,  0.9f },
+        // Damso: deep, close and dark, light natural tuning, very little space
+        { 0.6f, 6000, 0.45f,  70, 0.3f,  2.5f, 1.0f, 0.65f, 0.4f, 0.35f, false, 0.3f,  0.8f, false, 0.10f, 1, 0.30f, 0.12f, 0.50f, true,  90,  0.4f },
     };
     const auto& v = presets[juce::jlimit (0, (int) std::size (presets) - 1, index)];
     auto s = [this] (const char* id, float x) { tchk::setParam (apvts, id, x); };
@@ -77,6 +106,8 @@ void VocalProcessor::applyPreset (int index)
     s ("dbl_on", v.dbl ? 1.0f : 0.0f); s ("dbl_amt", v.dbla); s ("dbl_width", v.dblw);
     s ("delay_on", v.dly ? 1.0f : 0.0f); s ("delay_mix", v.dmix); s ("delay_div", (float) v.div); s ("delay_fb", v.fb);
     s ("verb_on", v.vmix > 0.0f ? 1.0f : 0.0f); s ("verb_mix", v.vmix); s ("verb_size", v.vsize);
+    // autotune: the key / scale stay as the user set them (they depend on the song)
+    s ("tune_on", v.tune ? 1.0f : 0.0f); s ("tune_speed", v.tspeed); s ("tune_amount", v.tamt);
     for (auto* id : { "level_on", "deess_on", "eq_on", "comp_on", "warm_on" }) s (id, 1.0f);
 }
 
@@ -158,6 +189,8 @@ void VocalProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     fxBuffer.setSize (2, maxBlockSize);
     reverbBuffer.setSize (2, maxBlockSize);
 
+    autotune.prepare (sr);
+
     inGain.reset (sr, 0.05); inGain.setCurrentAndTargetValue (dbToGain (param ("input")));
     outGain.reset (sr, 0.05); outGain.setCurrentAndTargetValue (dbToGain (param ("output")));
 }
@@ -187,6 +220,11 @@ void VocalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     float inPk = 0.0f;
     for (int ch = 0; ch < numCh; ++ch) inPk = juce::jmax (inPk, buffer.getMagnitude (ch, 0, n));
     inputPeakDb = gainToDb (inPk, -100.0f);
+
+    // ---- Autotune (first in the chain, on the raw voice) ----
+    autotune.setParams (param ("tune_on") > 0.5f, (int) param ("tune_key"), (int) param ("tune_scale"),
+                        param ("tune_speed"), param ("tune_amount"));
+    autotune.process (buffer.getArrayOfWritePointers(), numCh, n);
 
     // ---- parameters ----
     const bool levelOn = param ("level_on") > 0.5f;

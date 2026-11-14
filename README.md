@@ -6,7 +6,7 @@ Suite de plugins audio maison, en VST3 et AU, qui marche dans Ableton, FL Studio
 |---|---|---|
 | **Tchiskibidi Master** | LeMaster, Ozone | Mastering complet en un plugin, avec bouton AUTO |
 | **Tchiskibidi Mix** | Neutron | Tout le traitement d'une piste : EQ, compresseur, transitoires, exciteur, clipper |
-| **Tchiskibidi Vocal** | Nectar | Chaîne voix complète : auto-level, de-esser, EQ, comp, saturation, doubleur, delay, reverb |
+| **Tchiskibidi Vocal** | Nectar | Chaîne voix complète : autotune, auto-level, de-esser, EQ, comp, saturation, doubleur, delay, reverb |
 | **Tchiskibidi Clean** | RX | Nettoyage : débruiteur, anti-ronflette, anti-clics |
 | **Tchiskibidi Space** | – | Écho façon bande + reverb |
 
@@ -51,11 +51,16 @@ Il y a aussi **UNDO/REDO** et deux mémoires **A/B** pour comparer deux réglage
 brillantes) · **Clip** · **Stereo** · **In/Out**.
 
 ## Tchiskibidi Vocal
-À mettre sur ta piste voix (presets : Rap lead, Rap douce / mélo, Chant pop, Backs, Adlibs, Podcast, Lo-fi) :
+À mettre sur ta piste voix. Presets : Rap lead, Rap douce / mélo, Chant pop, Backs, Adlibs, Podcast, Lo-fi, puis des presets
+**façon artistes** (inspirés de leur son de voix habituel) : Travis Scott, Drake, Kanye West (808s), Future, The Weeknd, PNL,
+Jul, Ninho, Damso. Les presets ne changent pas la tonalité de l'autotune : règle-la selon ton morceau.
+
+**Autotune** : *Tonalité* + *Gamme* (Chromatique = marche sur tous les morceaux, sinon choisis la tonalité de ton instru),
+*Speed* (0 ms = effet robot à la T-Pain / Travis, 100 ms et plus = correction naturelle), *Amount* (dose de correction).
+L'écran montre la note chantée et la note visée.
 **Level** (égalise automatiquement le volume de la voix) · **De-ess** (adoucit les « s ») · **EQ voix** (low cut, boue,
 présence, air) · **Comp** (*Speed* = rapidité) · **Warm** (saturation à lampe) · **Double** (doublage stéréo) ·
 **Delay** calé sur le tempo · **Reverb**.
-La correction de justesse (type autotune) n'est pas encore incluse : ce sera un plugin à part.
 
 ## Tchiskibidi Clean
 Pour réparer un enregistrement (souffle, ronflette, clics) :

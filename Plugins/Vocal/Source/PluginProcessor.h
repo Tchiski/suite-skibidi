@@ -3,9 +3,10 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "TchiskibidiDSP.h"
 #include "TchiskibidiParams.h"
+#include "AutoTune.h"
 
 // Tchiskibidi Vocal: complete vocal chain.
-// Input -> Auto-level -> Low cut -> De-esser -> EQ (mud, presence, air) -> Compressor -> Warmth
+// Input -> Autotune -> Auto-level -> Low cut -> De-esser -> EQ (mud, presence, air) -> Compressor -> Warmth
 //       -> Doubler -> Delay (send) -> Reverb (send) -> Output
 class VocalProcessor : public juce::AudioProcessor
 {
@@ -35,11 +36,13 @@ public:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     static juce::StringArray getPresetNames();
+    static constexpr int numGenericPresets = 7; // the rest are artist-style presets
     static juce::StringArray getDivisionNames();
     void applyPreset (int index);
     static std::vector<tchk::BiquadCoeffs> makeEqCoeffs (const juce::AudioProcessorValueTreeState&, double sampleRate);
 
     juce::AudioProcessorValueTreeState apvts;
+    tchk::AutoTune autotune;
     std::atomic<float> levelerDb { 0.0f }, deesserGrDb { 0.0f }, compGrDb { 0.0f }, inputPeakDb { -100.0f }, outputPeakDb { -100.0f };
 
 private:
