@@ -34,6 +34,7 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel 4
 
+      # ---------- macOS: one double-click .pkg installer ----------
       - name: Make macOS installer
         if: runner.os == 'macOS'
         run: |
@@ -45,6 +46,7 @@ jobs:
 
           cat > scripts/postinstall <<'EOF'
           #!/bin/bash
+          # Remove old manual copies from the user's Library, unblock, refresh AU cache
           U=$(stat -f%Su /dev/console)
           rm -rf "/Users/$U/Library/Audio/Plug-Ins/VST3/Tchiskibidi "* "/Users/$U/Library/Audio/Plug-Ins/Components/Tchiskibidi "*
           xattr -cr /Library/Audio/Plug-Ins/VST3 /Library/Audio/Plug-Ins/Components 2>/dev/null
@@ -63,6 +65,7 @@ jobs:
                    --identifier com.tchiskibidi.au --version 1.0 --scripts scripts au.pkg
           productbuild --package vst3.pkg --package au.pkg dist/Tchiskibidi-Installer-macOS.pkg
 
+      # ---------- Windows: one double-click .exe installer ----------
       - name: Make Windows installer
         if: runner.os == 'Windows'
         run: |
@@ -93,6 +96,7 @@ jobs:
           name: installer-${{ matrix.name }}
           path: dist
 
+  # ---------- Put the installers on the repo's "Releases" page ----------
   release:
     needs: build
     if: ${{ !cancelled() }}
@@ -112,4 +116,4 @@ jobs:
           sleep 3
           gh release create latest out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Tchiskibidi Suite - derniere version" \
-            --notes "Mac : telecharge Tchiskibidi-Installer-macOS.pkg. Windows : telecharge Tchiskibidi-Installer-Windows.exe."
+            --notes "Mac : telecharge Tchiskibidi-Installer-macOS.pkg. Windows : telecharge Tchiskibidi-Installer-Windows.exe. Double-clique et suis les etapes."

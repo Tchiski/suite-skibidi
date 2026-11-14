@@ -34,50 +34,17 @@ Astuce : double-clic sur un bouton pour revenir à sa valeur par défaut.
 
 ---
 
-## Obtenir les plugins
+## Installer (le plus simple)
 
-### Option A : sans rien installer (recommandé)
-GitHub compile les plugins pour toi, pour Windows et pour Mac.
+1. Sur la page GitHub du projet, clique à droite sur **Releases** → **latest**.
+2. Télécharge **Tchiskibidi-Installer-macOS.pkg** (Mac) ou **Tchiskibidi-Installer-Windows.exe** (Windows).
+3. Double-clique dessus et suis les étapes (« Continuer », « Installer », ton mot de passe).
+4. Dans Ableton : Réglages → Plug-ins → **Examen**. Le plugin apparaît dans Plug-ins → Tchiskibidi.
 
-1. Crée un compte sur github.com, puis un nouveau dépôt (par ex. `tchiskibidi-suite`).
-2. Envoie tout ce dossier dans le dépôt (bouton « Add file → Upload files », ou GitHub Desktop).
-   Le dossier caché `.github` doit bien être inclus.
-3. Va dans l'onglet **Actions** et attends que le build devienne vert (environ 10 à 15 minutes la première fois).
-4. Clique sur le build, puis télécharge `Tchiskibidi-Windows` ou `Tchiskibidi-macOS` en bas de la page.
+**Mac, première fois seulement** : si le Mac dit qu'il ne peut pas vérifier l'installateur, clique sur « OK »,
+puis ouvre **Réglages Système → Confidentialité et sécurité**, descends et clique sur **Ouvrir quand même**.
 
-À chaque modification envoyée sur GitHub, les plugins sont recompilés automatiquement.
-
-### Option B : compiler sur ton ordi
-Il faut **CMake** et **Git**, plus :
-- **Windows** : Visual Studio 2022 Community (cocher « Développement Desktop en C++ »)
-- **Mac** : Xcode (App Store), puis `xcode-select --install` dans le Terminal
-
-Ensuite, dans un terminal ouvert dans ce dossier :
-```
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-```
-Les plugins se trouvent dans `build/Plugins/Space/TchiskibidiSpace_artefacts/Release/`.
-Il y a aussi une version **Standalone** pour tester sans DAW.
-
----
-
-## Installer
-
-| Système | Où copier |
-|---|---|
-| Windows (VST3) | `C:\Program Files\Common Files\VST3\` |
-| Mac (VST3) | `~/Library/Audio/Plug-Ins/VST3/` |
-| Mac (AU, pour Logic) | `~/Library/Audio/Plug-Ins/Components/` |
-
-**Sur Mac**, les plugins ne sont pas signés par Apple. S'ils sont bloqués, lance cette commande dans le Terminal :
-```
-xattr -cr ~/Library/Audio/Plug-Ins/VST3/"Tchiskibidi Space.vst3"
-```
-Fais la même chose pour le `.component` si besoin.
-
-**Dans Ableton** : Préférences → Plug-ins → active « Use VST3 Plug-in System Folders », puis clique sur **Rescan**.
-Le plugin apparaît dans Plug-ins → Tchiskibidi.
+Chaque fois que le code change sur GitHub, un nouvel installateur est fabriqué automatiquement (10 à 15 min).
 
 ---
 
