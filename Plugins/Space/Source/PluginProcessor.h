@@ -21,6 +21,7 @@ public:
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockInternal (juce::AudioBuffer<float>&, juce::MidiBuffer&);
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -44,6 +45,7 @@ public:
     static juce::StringArray getDivisionNames();
 
     juce::AudioProcessorValueTreeState apvts;
+    std::atomic<float> inputPeakDb { -100.0f }, outputPeakDb { -100.0f }; // for the meters / animated sky
 
 private:
     float readDelay (int channel, float delayInSamples) const noexcept;

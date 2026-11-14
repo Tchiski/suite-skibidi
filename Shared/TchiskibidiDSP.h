@@ -7,6 +7,8 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <complex>
 #include <vector>
 
@@ -14,14 +16,33 @@ namespace tchk
 {
 constexpr float kPi = juce::MathConstants<float>::pi;
 
-inline float dbToGain (float db) noexcept { return std::pow (10.0f, db * 0.05f); }
+// Fast log2 / exp2 (polynomial approximations, ~1e-4 relative error = 0.001 dB):
+// these run per sample in every dynamics processor, so they are worth the speed.
+inline float fastLog2 (float x) noexcept
+{
+    std::uint32_t i; std::memcpy (&i, &x, 4);
+    const float e = (float) ((int) ((i >> 23) & 255) - 127);
+    i = (i & 0x007FFFFFu) | 0x3F800000u;
+    float m; std::memcpy (&m, &i, 4);
+    return e + 1.4426950f * (-1.7417939f + (2.8212026f + (-1.4699568f + (0.44717955f - 0.056570851f * m) * m) * m) * m);
+}
+inline float fastExp2 (float x) noexcept
+{
+    x = juce::jlimit (-126.0f, 126.0f, x);
+    const float xi = std::floor (x), f = x - xi;
+    const float p = 1.0f + f * (0.69314718f + f * (0.24022650f + f * (0.05550411f + f * (0.00961813f + f * 0.00133336f))));
+    const std::uint32_t bits = (std::uint32_t) ((int) xi + 127) << 23;
+    float scale; std::memcpy (&scale, &bits, 4);
+    return p * scale;
+}
+inline float dbToGain (float db) noexcept { return fastExp2 (db * 0.16609640f); }           // 10^(db/20)
 inline float gainToDb (float g, float floorDb = -120.0f) noexcept
 {
-    return g > 1.0e-6f ? juce::jmax (floorDb, 20.0f * std::log10 (g)) : floorDb;
+    return g > 1.0e-6f ? juce::jmax (floorDb, 6.0205999f * fastLog2 (g)) : floorDb;      // 20 log10
 }
 inline float powerToDb (double p, float floorDb = -120.0f) noexcept
 {
-    return p > 1.0e-12 ? juce::jmax (floorDb, (float) (10.0 * std::log10 (p))) : floorDb;
+    return p > 1.0e-12 ? juce::jmax (floorDb, 3.0103f * fastLog2 ((float) p)) : floorDb;  // 10 log10
 }
 // One-pole smoothing coefficient for a time constant in ms
 inline float onePoleCoef (double sampleRate, double ms) noexcept

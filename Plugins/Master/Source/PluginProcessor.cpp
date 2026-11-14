@@ -85,6 +85,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout MasterProcessor::createParam
     addB ("auto", "Auto", false);
     addB ("bypass", "Bypass", false);
     addB ("match", "Match", true);
+    addF ("spice", "Spice", 0.0f, 1.0f, 0.35f, percentAttr());
 
     return { p.begin(), p.end() };
 }
@@ -466,6 +467,26 @@ void MasterProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     outputLoudness.process (buffer.getArrayOfReadPointers(), numCh, n);
 
+    if (scopeWanted.load (std::memory_order_relaxed))
+    {
+        // one pair every 4 samples is plenty for the display
+        const int pairs = n / 4;
+        int s1, n1, s2, n2;
+        scopeFifo.prepareToWrite (pairs, s1, n1, s2, n2);
+        auto put = [&] (int start, int count, int offset)
+        {
+            for (int k = 0; k < count; ++k)
+            {
+                const int i = (offset + k) * 4;
+                scopeL[(size_t) (start + k)] = buffer.getSample (0, i);
+                scopeR[(size_t) (start + k)] = numCh > 1 ? buffer.getSample (1, i) : buffer.getSample (0, i);
+            }
+        };
+        put (s1, n1, 0);
+        put (s2, n2, n1);
+        scopeFifo.finishedWrite (n1 + n2);
+    }
+
     const float tpDb = gainToDb (tp * outputGain.getCurrentValue(), -100.0f);
     truePeakDb = tpDb;
     if (tpDb >= peakHold || (peakHoldSamples -= n) <= 0)
@@ -569,6 +590,34 @@ juce::AudioProcessorEditor* MasterProcessor::createEditor()
     return new MasterEditor (*this);
 }
 
+void MasterProcessor::setOversamplingHQ (bool hq)
+{
+    apvts.state.setProperty ("os_hq", hq, nullptr);
+    const int wanted = hq ? 2 : 1;
+    if (wanted == osFactorLog2)
+        return;
+    suspendProcessing (true);
+    osFactorLog2 = wanted;
+    if (getSampleRate() > 0.0)
+        prepareToPlay (getSampleRate(), juce::jmax (1, getBlockSize()));
+    suspendProcessing (false);
+}
+
+void MasterProcessor::applySpice (float a)
+{
+    a = juce::jlimit (0.0f, 1.0f, a);
+    auto mix = [a] (float lo, float hi) { return lo + (hi - lo) * a; };
+    setParam ("spec_amt", mix (0.20f, 0.80f));
+    setParam ("glue", mix (0.15f, 0.75f));
+    setParam ("detail", mix (0.10f, 0.60f));
+    setParam ("bass", mix (0.0f, 2.5f));
+    setParam ("air", mix (0.0f, 3.0f));
+    setParam ("width", mix (1.0f, 1.3f));
+    setParam ("color", mix (0.10f, 0.70f));
+    setParam ("clip_gain", mix (0.0f, 4.0f));
+    setParam ("lim_gain", mix (1.0f, 10.0f));
+}
+
 void MasterProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
@@ -580,7 +629,10 @@ void MasterProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
+        {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            setOversamplingHQ ((bool) apvts.state.getProperty ("os_hq", true));
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

@@ -10,18 +10,21 @@ namespace
 }
 
 CleanEditor::CleanEditor (CleanProcessor& p)
-    : tchk::ScaledEditor (p, kW, kH, 0.85f),
+    : tchk::ScaledEditor (p, kW, kH, 0.85f, "clean"),
       audioProcessor (p),
       spectrum (p),
       dnOn (p.apvts, "dn_on", "On", cDn), humOn (p.apvts, "hum_on", "On", cHum), clickOn (p.apvts, "click_on", "On", cClick),
-      adaptive (p.apvts, "adaptive", "Adaptatif", cDn), listen (p.apvts, "listen", "Ecouter le bruit retire", cListen),
-      dnAmount (p.apvts, "dn_amount", "Reduction", cDn), dnSens (p.apvts, "dn_sens", "Sensibilite", cDn),
-      humAmt (p.apvts, "hum_amt", "Amount", cHum), clickSens (p.apvts, "click_sens", "Sensibilite", cClick),
+      adaptive (p.apvts, "adaptive", "Adaptatif", cDn), listen (p.apvts, "listen", TK_FR ("Écouter le bruit retiré"), cListen),
+      dnAmount (p.apvts, "dn_amount", TK_FR ("Réduction"), cDn), dnSens (p.apvts, "dn_sens", TK_FR ("Sensibilité"), cDn),
+      humAmt (p.apvts, "hum_amt", "Amount", cHum), clickSens (p.apvts, "click_sens", TK_FR ("Sensibilité"), cClick),
       lowcut (p.apvts, "lowcut", "Low cut", cLow), output (p.apvts, "output", "Output", cIo),
       humFreq (p.apvts, "hum_freq"), humHarm (p.apvts, "hum_harm")
 {
     content.paintFn = [this] (juce::Graphics& g) { paintContent (g); };
     content.layoutFn = [this] { layout(); };
+    content.overFn = [this] (juce::Graphics& g) { paintDynamic (g); };
+    levelDb = [&p] { return p.outputPeakDb.load(); };
+    p.displayWanted = true;
 
     learnButton.setClickingTogglesState (true);
     learnButton.setColour (juce::TextButton::buttonOnColourId, LNF::lime);
@@ -34,6 +37,14 @@ CleanEditor::CleanEditor (CleanProcessor& p)
         content.addAndMakeVisible (c);
 
     layout();
+    addInfo (spectrumArea.getX() + 130, spectrumArea.getY() + 15, TK_FR ("Le spectre de ton son : en rose le signal, en cyan le bruit que Clean a repéré. Plus la ligne cyan est basse, plus ton enregistrement est propre."));
+    addModuleInfo (dnArea, "De-noise", TK_FR ("Enlève le souffle. Appuie sur LEARN pendant un passage où il n'y a que du bruit (3 secondes) : Clean l'apprend. ADAPTATIF suit le bruit tout seul, EFFACER oublie ce qui a été appris. SENSIBILITÉ : plus haut = enlève plus."));
+    addModuleInfo (humArea, "De-hum", TK_FR ("Enlève le bourdonnement électrique. Mets 50 Hz en Europe. HARMONIQUES = nombre d'échos du bourdonnement retirés."));
+    addModuleInfo (clickArea, "De-click", TK_FR ("Répare les petits clics et craquements. Le compteur montre combien il en a réparé."), true);
+    addModuleInfo (lowArea, "Rumble", TK_FR ("Coupe les grondements graves (vent, pas, clim)."));
+    addModuleInfo (listenArea, TK_FR ("Écoute"), TK_FR ("Fais entendre seulement ce qui est retiré : si tu entends la voix, tu en enlèves trop."));
+    addModuleInfo (outArea, "Output", TK_FR ("Volume de sortie."));
+    finishSetup (44, { { 230, 14, 50 }, { 320, 36, 32 }, { 420, 14, 40 }, { 520, 30, 34 }, { 640, 16, 44 } });
     startTimerHz (30);
 }
 
@@ -60,7 +71,8 @@ void CleanEditor::layout()
     humHarm.setBounds (humArea.getX() + 12, humArea.getY() + 112, 84, 26);
     humAmt.setBounds (humArea.getX() + 104, humArea.getY() + 44, 86, 112);
 
-    tchk::layoutModule (clickArea, &clickOn, { &clickSens }, 40);
+    tchk::layoutModule (clickArea, nullptr, { &clickSens }, 40);
+    clickOn.setBounds (onBoundsCompact (clickArea));
     clickSens.setBounds (clickSens.getBounds().withTrimmedBottom (18));
 
     tchk::layoutModule (lowArea, nullptr, { &lowcut }, 34);
@@ -71,27 +83,70 @@ void CleanEditor::layout()
 void CleanEditor::paintContent (juce::Graphics& g)
 {
     paintBackgroundAndHeader (g, "Clean", {});
-    tchk::drawPanel (g, spectrumArea.toFloat(), cDn);
-    tchk::drawModule (g, dnArea, "De-noise", cDn);
-    tchk::drawModule (g, humArea, "De-hum", cHum);
-    tchk::drawModule (g, clickArea, "De-click", cClick);
-    tchk::drawModule (g, lowArea, "Rumble", cLow);
-    tchk::drawModule (g, listenArea, "Ecoute", cListen);
-    tchk::drawModule (g, outArea, "Output", cIo);
+    drawPanelT (g, spectrumArea, cDn);
+    drawModuleT (g, dnArea, "De-noise", cDn);
+    drawModuleT (g, humArea, "De-hum", cHum);
+    drawModuleT (g, clickArea, "De-click", cClick, true);
+    drawModuleT (g, lowArea, "Rumble", cLow);
+    drawModuleT (g, listenArea, TK_FR ("Écoute"), cListen);
+    drawModuleT (g, outArea, "Output", cIo);
 
     g.setColour (LNF::textDim);
     g.setFont (LNF::font (10.0f));
-    g.drawText ("FREQUENCE", humFreq.getBounds().translated (0, -14).withHeight (12), juce::Justification::centred);
+    g.drawText (TK_FR ("FRÉQUENCE"), humFreq.getBounds().translated (0, -14).withHeight (12), juce::Justification::centred);
     g.drawText ("HARMONIQUES", humHarm.getBounds().translated (-8, -14).withHeight (12).withWidth (100), juce::Justification::centred);
-    g.drawText (juce::String (audioProcessor.clicksRepaired.load()) + " CLICS REPARES",
-                clickArea.getX() + 8, clickArea.getBottom() - 24, clickArea.getWidth() - 16, 14, juce::Justification::centred);
     g.setFont (LNF::font (10.0f, false));
-    g.drawText (audioProcessor.hasLearnedProfile() ? "PROFIL DE BRUIT : APPRIS" : "PROFIL DE BRUIT : AUTO",
-                dnArea.getX() + 14, dnArea.getBottom() - 20, 200, 14, juce::Justification::centredLeft);
-    g.drawText ("Entends uniquement ce qui est enleve,", listenArea.getX() + 20, listenArea.getY() + 36, 300, 14, juce::Justification::centredLeft);
-    g.drawText ("pour verifier que tu ne retires pas la voix.", listenArea.getX() + 20, listenArea.getY() + 96, 300, 14, juce::Justification::centredLeft);
+    g.drawText (TK_FR ("Entends uniquement ce qui est enlevé,"), listenArea.getX() + 20, listenArea.getY() + 36, 300, 14, juce::Justification::centredLeft);
+    g.drawText (TK_FR ("pour vérifier que tu ne retires pas la voix."), listenArea.getX() + 20, listenArea.getY() + 96, 300, 14, juce::Justification::centredLeft);
+}
 
-    tchk::drawMascot (g, { 122.0f, 6.0f, 60.0f, 52.0f }, 0.5f, { 0.0f, 0.4f }, 0.0f);
+void CleanEditor::paintDynamic (juce::Graphics& g)
+{
+    // the mascot: while LEARN listens, it bobs its head and notes float around it
+    const bool learning = learnButton.getToggleState();
+    const juce::Rectangle<float> m (122.0f, 6.0f, 60.0f, 52.0f);
+    if (learning)
+    {
+        juce::Graphics::ScopedSaveState ss (g);
+        g.addTransform (juce::AffineTransform::rotation (std::sin (phase * 3.0f) * 0.1f, m.getCentreX(), m.getBottom())
+                          .translated (0.0f, std::sin (phase * 8.0f) * 2.0f));
+        tchk::drawMascot (g, m, 0.0f, { std::sin (phase * 1.5f), 0.0f }, phase * 4.0f);
+        g.setColour (LNF::lime.withAlpha (0.5f + 0.5f * std::sin (phase * 6.0f)));
+        g.setFont (juce::Font (juce::FontOptions ("Georgia", 15.0f, juce::Font::bold)));
+        const float rise = std::fmod (phase * 20.0f, 16.0f);
+        g.drawText (juce::String (juce::CharPointer_UTF8 ("♪")), juce::Rectangle<float> (m.getRight() - 4.0f + std::sin (phase * 4.0f) * 5.0f, m.getY() + 10.0f - rise, 16.0f, 16.0f), juce::Justification::centred);
+    }
+    else
+        tchk::drawMascot (g, m, 0.5f, { 0.0f, 0.4f }, 0.0f);
+
+    // progress ring around LEARN
+    const float prog = audioProcessor.learnProgress.load();
+    if (learning)
+    {
+        const auto rb = learnButton.getBounds().toFloat().expanded (4.0f);
+        juce::Path full;
+        full.addRoundedRectangle (rb, 9.0f);
+        g.setColour (LNF::lime.withAlpha (0.15f));
+        g.strokePath (full, juce::PathStrokeType (3.0f));
+        const float len = full.getLength() * prog;
+        juce::Path progress;
+        bool first = true;
+        for (float d = 0.0f; d <= len; d += 2.0f)
+        {
+            const auto pt = full.getPointAlongPath (d);
+            if (first) { progress.startNewSubPath (pt); first = false; } else progress.lineTo (pt);
+        }
+        g.setColour (LNF::lime);
+        g.strokePath (progress, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    g.setColour (LNF::textDim);
+    g.setFont (LNF::font (10.0f));
+    g.drawText (juce::String (audioProcessor.clicksRepaired.load()) + TK_FR (" CLICS RÉPARÉS"),
+                clickArea.getX() + 8, clickArea.getBottom() - 24, clickArea.getWidth() - 16, 14, juce::Justification::centred);
+    g.setFont (LNF::font (9.0f, false));
+    g.drawText (audioProcessor.hasLearnedProfile() ? TK_FR ("PROFIL : APPRIS ✓") : juce::String ("PROFIL : AUTO"),
+                learnButton.getX() - 6, dnArea.getY() + 158, 122, 12, juce::Justification::centred);
 }
 
 void CleanEditor::timerCallback()
@@ -99,8 +154,10 @@ void CleanEditor::timerCallback()
     spectrum.update();
     const float prog = audioProcessor.learnProgress.load();
     learnButton.setButtonText (learnButton.getToggleState() ? "ECOUTE... " + juce::String (juce::roundToInt (prog * 100.0f)) + "%" : "LEARN");
+    phase += 1.0f / 30.0f;
     content.repaint (dnArea);
     content.repaint (clickArea);
+    if (learnButton.getToggleState()) content.repaint (100, 0, 120, 64);
 }
 
 //==============================================================================

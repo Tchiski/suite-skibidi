@@ -19,6 +19,21 @@ Suite de plugins audio maison, en VST3 et AU, qui marche dans Ableton, FL Studio
 
 ---
 
+## Nouveautés v0.3 (toute la suite)
+
+- **Ciel animé** derrière chaque plugin, avec sa couleur : Space (mauve/rose/bleu), Mix (vert), Vocal (bleu nuit),
+  Clean (turquoise), Master (rouge/orange). Les nébuleuses pulsent avec la musique et les yeux s'ouvrent sur les passages forts.
+- **Petits « i »** à côté de chaque module : laisse la souris dessus pour lire l'explication.
+- **Roue de réglages** (en haut à droite) : couper les animations, fluidité (Éco / Normale / Fluide), ciel réactif ou non,
+  bulles d'info, taille de la fenêtre, réinitialiser le plugin. Ces réglages valent pour tous les plugins Tchiskibidi.
+  En plus : **Master** → qualité du limiteur (Éco 2x / Haute 4x), **Vocal** → type de voix pour l'autotune.
+- **Space** : pad XY (temps / répétitions), échos en bulles (ping-pong visible), réverb en nébuleuse.
+- **Mix** : EQ à attraper à la souris, bouton **PARAM / MULTI** (EQ 10 bandes), courbe du compresseur, avant/après des transitoires.
+- **Vocal** : piano roll de l'autotune (ta voix en blanc, la voix corrigée en turquoise), le « S » du de-esser qui s'allume.
+- **Clean** : anneau de progression autour de LEARN, la mascotte qui écoute.
+- **Master** : jauge LUFS autour de la mascotte, vectorscope stéréo, curseur **SPICE MOI ÇA BABY** qui dose tout le master.
+- **Moins de CPU** : calculs de volume accélérés, autotune et Clean qui ne calculent rien d'inutile quand ils sont éteints.
+
 ## Tchiskibidi Master : mode d'emploi
 
 À mettre **en dernier** sur ta piste Master.

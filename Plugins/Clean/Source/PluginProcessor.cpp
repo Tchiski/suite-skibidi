@@ -46,6 +46,18 @@ float SpectralDenoiser::process (float x) noexcept
 
 void SpectralDenoiser::processFrame() noexcept
 {
+    constexpr float olaScale = 0.5f; // sqrt-Hann analysis * synthesis at 75% overlap sums to 2
+    if (! enabled && spectrumOut == nullptr && ! learning)
+    {
+        // nothing to analyse or remove: same result as the FFT path with unity gains, without the FFTs
+        for (int i = 0; i < size; ++i)
+        {
+            const float w = window[(size_t) i];
+            outRing[(size_t) ((pos + i) % size)] += inRing[(size_t) ((pos + i) % size)] * w * w * olaScale;
+        }
+        return;
+    }
+
     for (int i = 0; i < size; ++i)
         frame[(size_t) i] = inRing[(size_t) ((pos + i) % size)] * window[(size_t) i];
     std::fill (frame.begin() + size, frame.end(), 0.0f);
@@ -98,7 +110,6 @@ void SpectralDenoiser::processFrame() noexcept
 
     fft.performRealOnlyInverseTransform (frame.data());
 
-    constexpr float olaScale = 0.5f; // sqrt-Hann analysis * synthesis at 75% overlap sums to 2
     for (int i = 0; i < size; ++i)
         outRing[(size_t) ((pos + i) % size)] += frame[(size_t) i] * window[(size_t) i] * olaScale;
 }
@@ -189,7 +200,18 @@ void CleanProcessor::clearProfile()
     std::fill (noiseProfile.begin(), noiseProfile.end(), 0.0f);
 }
 
-void CleanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+void CleanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    const int nCh = juce::jmin (2, buffer.getNumChannels());
+    float in = 0.0f, out = 0.0f;
+    for (int ch = 0; ch < nCh; ++ch) in = juce::jmax (in, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+    processBlockInternal (buffer, midiMessages);
+    for (int ch = 0; ch < nCh; ++ch) out = juce::jmax (out, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+    inputPeakDb = in > 1.0e-5f ? 20.0f * std::log10 (in) : -100.0f;
+    outputPeakDb = out > 1.0e-5f ? 20.0f * std::log10 (out) : -100.0f;
+}
+
+void CleanProcessor::processBlockInternal (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
@@ -198,7 +220,7 @@ void CleanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
         for (int start = 0; start < n; start += maxBlockSize)
         {
             juce::AudioBuffer<float> sub (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), start, juce::jmin (maxBlockSize, n - start));
-            processBlock (sub, midi);
+            processBlockInternal (sub, midi);
         }
         return;
     }
@@ -253,7 +275,7 @@ void CleanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
         d.learning = learnState == learningNow && ch == 0;
         d.learnAccum = ch == 0 ? &learnAccum : nullptr;
         d.learnFrames = ch == 0 ? &learnFrames : nullptr;
-        d.spectrumOut = ch == 0 ? &spectrum : nullptr;
+        d.spectrumOut = (ch == 0 && displayWanted.load (std::memory_order_relaxed)) ? &spectrum : nullptr;
     }
     outGain.setTargetValue (dbToGain (param ("output")));
     const bool listen = param ("listen") > 0.5f;

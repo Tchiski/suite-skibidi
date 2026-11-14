@@ -19,6 +19,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout MixProcessor::createParamete
     p.add ("hmid_freq", "High-Mid Freq", 1000.0f, 12000.0f, 3500.0f, Unit::hz, 0.4f);
     p.add ("high_gain", "High Gain", -12.0f, 12.0f, 0.0f, Unit::dB);
     p.add ("high_freq", "High Freq", 3000.0f, 18000.0f, 10000.0f, Unit::hz, 0.5f);
+    p.addChoice ("eq_mode", "EQ Mode", { "Param", "Multi" }, 0);
+    for (int b = 0; b < numGeqBands; ++b)
+        p.add (geqId (b).toRawUTF8(), ("EQ Multi " + juce::String (geqFreqs[(size_t) b] >= 1000.0f ? juce::String (geqFreqs[(size_t) b] / 1000.0f) + "k" : juce::String ((int) geqFreqs[(size_t) b]))).toRawUTF8(),
+               -12.0f, 12.0f, 0.0f, Unit::dB);
 
     p.addBool ("comp_on", "Comp On", true);
     p.add ("threshold", "Threshold", -48.0f, 0.0f, -18.0f, Unit::dB);
@@ -68,6 +72,7 @@ void MixProcessor::applyPreset (int index)
     s ("threshold", v.th); s ("ratio", v.ra); s ("attack", v.at); s ("release", v.re); s ("comp_mix", 1.0f);
     s ("punch", v.punch); s ("sustain", v.sus); s ("exc_drive", v.exd); s ("exc_amount", v.exa); s ("clip", v.clip); s ("width", v.width);
     for (auto* id : { "eq_on", "comp_on", "trans_on", "exc_on", "clip_on" }) s (id, 1.0f);
+    s ("eq_mode", 0.0f); // presets are made with the 4-band EQ
 }
 
 std::array<BiquadCoeffs, 5> MixProcessor::makeEqCoeffs (const juce::AudioProcessorValueTreeState& s, double fs)
@@ -101,6 +106,8 @@ void MixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     for (auto& f : eq) f.reset();
     lowCut2.reset();
     lastEqParams.fill (-12345.0f);
+    for (auto& f : geq) f.reset();
+    lastGeq.fill (-12345.0f);
     comp.reset();
     fastAttEnv = slowAttEnv = fastRelEnv = slowRelEnv = 0.0f;
     kFastAtt = onePoleCoef (sr, 0.5); kSlowAtt = onePoleCoef (sr, 25.0); kRel = onePoleCoef (sr, 120.0);
@@ -150,7 +157,7 @@ void MixProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     // ---- EQ coefficients (only recomputed when a knob moved) ----
     const bool eqOn = param ("eq_on") > 0.5f;
     {
-        const char* ids[] = { "lowcut", "low_gain", "low_freq", "mid_gain", "mid_freq", "mid_q", "hmid_gain", "hmid_freq", "high_gain", "high_freq", "eq_on" };
+        const char* ids[] = { "lowcut", "low_gain", "low_freq", "mid_gain", "mid_freq", "mid_q", "hmid_gain", "hmid_freq", "high_gain", "high_freq", "eq_on", "eq_mode" };
         bool changed = false;
         for (size_t k = 0; k < lastEqParams.size(); ++k)
         {
@@ -165,6 +172,20 @@ void MixProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         }
     }
     const bool lowCutOn = param ("lowcut") > 21.0f;
+    const bool multiEq = param ("eq_mode") > 0.5f;
+    int numGeqActive = 0;
+    std::array<int, numGeqBands> geqActive {};
+    if (multiEq)
+        for (int b = 0; b < numGeqBands; ++b)
+        {
+            const float g = apvts.getRawParameterValue (geqId (b))->load();
+            if (g != lastGeq[(size_t) b])
+            {
+                lastGeq[(size_t) b] = g;
+                geq[(size_t) b].set (BiquadCoeffs::make (FilterType::peak, sr, juce::jmin ((double) geqFreqs[(size_t) b], sr * 0.45), geqQ, g));
+            }
+            if (std::abs (g) > 0.01f) geqActive[(size_t) numGeqActive++] = b; // flat bands cost nothing
+        }
 
     const bool compOn = param ("comp_on") > 0.5f;
     comp.thresholdDb = param ("threshold");
@@ -181,7 +202,7 @@ void MixProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     outGain.setTargetValue (dbToGain (param ("output")));
     widthSm.setTargetValue (param ("width"));
 
-    float minGr = 0.0f, transMax = 0.0f;
+    float minGr = 0.0f, transMax = 0.0f, detPeak = 0.0f;
 
     for (int i = 0; i < n; ++i)
     {
@@ -192,11 +213,18 @@ void MixProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         {
             if (lowCutOn) x[ch] = lowCut2.process (ch, eq[0].process (ch, x[ch]));
             if (eqOn)
-                for (size_t k = 1; k < eq.size(); ++k)
-                    x[ch] = eq[k].process (ch, x[ch]);
+            {
+                if (multiEq)
+                    for (int k = 0; k < numGeqActive; ++k)
+                        x[ch] = geq[(size_t) geqActive[(size_t) k]].process (ch, x[ch]);
+                else
+                    for (size_t k = 1; k < eq.size(); ++k)
+                        x[ch] = eq[k].process (ch, x[ch]);
+            }
         }
 
         const float level = juce::jmax (std::abs (x[0]), std::abs (x[1]));
+        detPeak = juce::jmax (detPeak, level);
 
         // Compressor (parallel mix + auto makeup)
         const float cm = compMix.getNextValue();
@@ -229,6 +257,7 @@ void MixProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     }
     compGrDb = minGr;
     transientDb = transMax;
+    compInDb = gainToDb (detPeak, -100.0f);
 
     // ---- Oversampled: exciter + clipper ----
     const bool excOn = param ("exc_on") > 0.5f;

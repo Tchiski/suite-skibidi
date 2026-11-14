@@ -222,6 +222,7 @@ void VocalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     inputPeakDb = gainToDb (inPk, -100.0f);
 
     // ---- Autotune (first in the chain, on the raw voice) ----
+    autotune.setVoiceRange (tuneRange.load());
     autotune.setParams (param ("tune_on") > 0.5f, (int) param ("tune_key"), (int) param ("tune_scale"),
                         param ("tune_speed"), param ("tune_amount"));
     autotune.process (buffer.getArrayOfWritePointers(), numCh, n);

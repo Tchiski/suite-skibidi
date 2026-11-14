@@ -17,9 +17,21 @@ class AutoTune
 public:
     static juce::StringArray keyNames()   { return { "Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si" }; }
     static juce::StringArray scaleNames() { return { "Chromatique", "Majeur", "Mineur" }; }
+    static juce::StringArray rangeNames() { return { juce::String ("Voix grave (60-500 Hz)"), juce::String ("Toutes les voix (70-1000 Hz)"), juce::String (juce::CharPointer_UTF8 ("Voix aiguë (140-1100 Hz)")) }; }
+
+    // Narrower range = more reliable detection and less CPU
+    void setVoiceRange (int r) noexcept
+    {
+        static constexpr float lo[] = { 60.0f, 70.0f, 140.0f }, hi[] = { 500.0f, 1000.0f, 1100.0f };
+        r = juce::jlimit (0, 2, r);
+        minHz = lo[r]; maxHz = hi[r];
+        tauMin = juce::jmax (2, (int) (dsr / maxHz));
+        tauMax = juce::jmin (tauAlloc, (int) (dsr / minHz) + 2);
+    }
 
     // Read by the editor
     std::atomic<float> detectedNote { -1.0f }, targetNote { -1.0f }, shiftSemis { 0.0f };
+    std::atomic<bool> displayWanted { false }; // the editor is open: keep detecting for the note display
 
     void prepare (double sampleRate)
     {
@@ -28,13 +40,14 @@ public:
         dsr = sr / decim;
         aaf1.set (BiquadCoeffs::make (FilterType::lowPass, sr, juce::jmin (2000.0, dsr * 0.4), 0.7071));
         aaf2.set (BiquadCoeffs::make (FilterType::lowPass, sr, juce::jmin (2000.0, dsr * 0.4), 0.7071));
-        tauMin = (int) (dsr / kMaxHz);
-        tauMax = (int) (dsr / kMinHz) + 2;
+        tauAlloc = (int) (dsr / 55.0) + 2; // buffers sized for the widest range
+        tauMin = juce::jmax (2, (int) (dsr / maxHz));
+        tauMax = juce::jmin (tauAlloc, (int) (dsr / minHz) + 2);
         win = juce::jmax (256, (int) (dsr * 0.040));
-        ring.assign ((size_t) (win + tauMax + 8), 0.0f);
+        ring.assign ((size_t) (win + tauAlloc + 8), 0.0f);
         frame.assign (ring.size(), 0.0f);
-        diff.assign ((size_t) tauMax + 2, 0.0f);
-        hop = juce::jmax (16, (int) (dsr * 0.006));
+        diff.assign ((size_t) tauAlloc + 2, 0.0f);
+        hop = juce::jmax (16, (int) (dsr * 0.008));
 
         maxGrain = (float) (0.060 * sr);
         minGrain = (float) (0.018 * sr);
@@ -72,8 +85,11 @@ public:
     {
         if (! isActive())
         {
-            // keep the analysis warm so the display reacts immediately when switched on
-            for (int i = 0; i < n; ++i) analyse (numCh > 1 ? 0.5f * (ch[0][i] + ch[1][i]) : ch[0][i]);
+            // switched off: only analyse while the editor shows the notes (saves CPU otherwise)
+            if (displayWanted.load (std::memory_order_relaxed))
+                for (int i = 0; i < n; ++i) analyse (numCh > 1 ? 0.5f * (ch[0][i] + ch[1][i]) : ch[0][i]);
+            else if (detectedNote.load() >= 0.0f)
+                unvoiced();
             return;
         }
 
@@ -86,7 +102,8 @@ public:
 
             // retune glide (0 ms = jump instantly)
             shift = retuneMs < 0.5f ? targetShift : shift + (targetShift - shift) * sepCoef;
-            float ratio = std::pow (2.0f, shift / 12.0f);
+            if (shift != lastShift) { lastShift = shift; shiftRatio = fastExp2 (shift * (1.0f / 12.0f)); }
+            float ratio = shiftRatio;
 
             // "parking": when no correction is needed, slowly bring one tap to full gain so
             // the two taps never sit half-mixed (which would colour the sound)
@@ -121,7 +138,8 @@ public:
     }
 
 private:
-    static constexpr float kMinHz = 70.0f, kMaxHz = 1000.0f;
+    float minHz = 70.0f, maxHz = 1000.0f;
+    int tauAlloc = 160;
 
     static float gain (float p) noexcept { const float s = std::sin (juce::MathConstants<float>::pi * p); return s * s; }
 
@@ -164,24 +182,31 @@ private:
 
         if (powerToDb (rmsPow) < -50.0f) { unvoiced(); return; }
 
-        // YIN difference function + cumulative mean normalisation
+        // YIN difference function + cumulative mean normalisation, stopping as soon as the
+        // first dip under the threshold has reached its minimum (most of the lags are skipped)
         diff[0] = 1.0f;
         float running = 0.0f;
         int best = -1;
         for (int tau = 1; tau <= tauMax; ++tau)
         {
             float d = 0.0f;
-            for (int j = 0; j < win; ++j) { const float e = frame[(size_t) j] - frame[(size_t) (j + tau)]; d += e * e; }
+            const float* a = frame.data();
+            const float* b = frame.data() + tau;
+            for (int j = 0; j < win; ++j) { const float e = a[j] - b[j]; d += e * e; }
             running += d;
             diff[(size_t) tau] = running > 0.0f ? d * (float) tau / running : 1.0f;
-        }
-        for (int tau = juce::jmax (2, tauMin); tau < tauMax; ++tau)
-            if (diff[(size_t) tau] < 0.15f)
+            if (best < 0)
             {
-                while (tau + 1 < tauMax && diff[(size_t) tau + 1] < diff[(size_t) tau]) ++tau;
-                best = tau;
-                break;
+                if (tau > juce::jmax (2, tauMin) && diff[(size_t) tau - 1] < 0.15f && diff[(size_t) tau] >= diff[(size_t) tau - 1])
+                {
+                    best = tau - 1;
+                    break;
+                }
             }
+        }
+        if (best < 0)
+            for (int tau = juce::jmax (2, tauMin); tau < tauMax; ++tau)
+                if (diff[(size_t) tau] < 0.15f) { best = tau; break; }
         if (best < 0) { unvoiced(); return; }
 
         // parabolic interpolation for sub-sample precision
@@ -189,7 +214,7 @@ private:
         const float den = a - 2.0f * b + c;
         const float tauF = (float) best + (std::abs (den) > 1.0e-9f ? 0.5f * (a - c) / den : 0.0f);
         const float hz = (float) dsr / tauF;
-        if (hz < kMinHz || hz > kMaxHz) { unvoiced(); return; }
+        if (hz < minHz || hz > maxHz) { unvoiced(); return; }
 
         voiced = true;
         period = (float) sr / hz;
@@ -240,7 +265,7 @@ private:
 
     int keyRoot = 0, scaleType = 0;
     float retuneMs = 20.0f, amount = 1.0f;
-    float shift = 0.0f, targetShift = 0.0f;
+    float shift = 0.0f, targetShift = 0.0f, lastShift = 0.0f, shiftRatio = 1.0f;
 
     DelayLine line;
     float grainA = 1323.0f, grainB = 1323.0f, phaseA = 0.25f, phaseB = 0.75f, maxGrain = 2646.0f, minGrain = 794.0f;

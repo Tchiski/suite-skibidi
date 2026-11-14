@@ -148,6 +148,36 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox&) override { return font (13.0f); }
     juce::Font getPopupMenuFont() override { return font (14.0f, false); }
 
+    // ---- tooltips (the "i" bubbles) ----
+    static juce::TextLayout layoutTooltip (const juce::String& tipText)
+    {
+        juce::AttributedString as;
+        as.setJustification (juce::Justification::topLeft);
+        as.append (tipText, font (13.0f, false), juce::Colour (0xfff4ecff));
+        juce::TextLayout tl;
+        tl.createLayoutWithBalancedLineLengths (as, 250.0f);
+        return tl;
+    }
+
+    juce::Rectangle<int> getTooltipBounds (const juce::String& tip, juce::Point<int> pos, juce::Rectangle<int> parentArea) override
+    {
+        const auto tl = layoutTooltip (tip);
+        const int w = (int) std::ceil (tl.getWidth()) + 24, h = (int) std::ceil (tl.getHeight()) + 18;
+        const int x = pos.x > parentArea.getCentreX() ? pos.x - (w + 10) : pos.x + 14;
+        const int y = pos.y > parentArea.getCentreY() ? pos.y - (h + 8) : pos.y + 10;
+        return juce::Rectangle<int> (x, y, w, h).constrainedWithin (parentArea);
+    }
+
+    void drawTooltip (juce::Graphics& g, const juce::String& tipText, int width, int height) override
+    {
+        const auto r = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
+        g.setColour (juce::Colour (0xff0a0616).withAlpha (0.97f));
+        g.fillRoundedRectangle (r, 10.0f);
+        g.setColour (juce::Colour (0xfff4ecff).withAlpha (0.25f));
+        g.drawRoundedRectangle (r.reduced (0.5f), 10.0f, 1.0f);
+        layoutTooltip (tipText).draw (g, r.reduced (12.0f, 9.0f));
+    }
+
     void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
     {
         label.setBounds (12, 1, box.getWidth() - 34, box.getHeight() - 2);

@@ -6,6 +6,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "TchiskibidiLookAndFeel.h"
 #include "TchiskibidiDSP.h"
+#include "TchiskibidiUI.h"
 
 namespace tchk
 {
@@ -23,6 +24,8 @@ public:
         slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, compact ? 14 : 16);
         slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
+        slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
         addAndMakeVisible (slider);
 
         label.setText (name.toUpperCase(), juce::dontSendNotification);
@@ -35,6 +38,7 @@ public:
         attachment = std::make_unique<APVTS::SliderAttachment> (state, paramId, slider);
         if (auto* p = state.getParameter (paramId))
             slider.setDoubleClickReturnValue (true, p->convertFrom0to1 (p->getDefaultValue()));
+        setBufferedToImage (true); // drawn once, then just copied while the sky animates behind it
     }
 
     void resized() override
@@ -130,9 +134,9 @@ private:
 
 //==============================================================================
 // Drawing helpers
-inline void drawPanel (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour accent)
+inline void drawPanel (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour accent, juce::Colour base = juce::Colour (0xff160b28).withAlpha (0.92f))
 {
-    g.setColour (juce::Colour (0xff160b28).withAlpha (0.92f));
+    g.setColour (base);
     g.fillRoundedRectangle (r, 12.0f);
     g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.10f), r.getX(), r.getY(),
                                              juce::Colours::transparentBlack, r.getX(), r.getBottom(), false));
@@ -162,10 +166,16 @@ inline void drawTag (juce::Graphics& g, juce::Rectangle<float> r, const juce::St
 }
 
 // Panel + tag in one call
-inline void drawModule (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& name, juce::Colour accent)
+inline float tagWidth (const juce::String& name, bool narrow = false)
 {
-    drawPanel (g, r.toFloat(), accent);
-    drawTag (g, { (float) r.getX() + 12.0f, (float) r.getY() + 10.0f, juce::jmax (84.0f, 14.0f + 11.0f * (float) name.length()), 22.0f }, name, accent);
+    return narrow ? juce::jmax (64.0f, 14.0f + 9.0f * (float) name.length()) : juce::jmax (84.0f, 14.0f + 11.0f * (float) name.length());
+}
+
+inline void drawModule (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& name, juce::Colour accent,
+                        juce::Colour base = juce::Colour (0xff160b28).withAlpha (0.92f), bool narrow = false)
+{
+    drawPanel (g, r.toFloat(), accent, base);
+    drawTag (g, { (float) r.getX() + 12.0f, (float) r.getY() + 10.0f, tagWidth (name, narrow), 22.0f }, name, accent);
 }
 
 // Standard module layout: ON toggle top-right, components spread evenly on one row below the tag
@@ -176,7 +186,10 @@ inline void layoutModule (juce::Rectangle<int> panel, juce::Component* onToggle,
     auto row = panel.withTrimmedTop (topOffset).reduced (8, 6);
     const int w = row.getWidth() / juce::jmax (1, (int) items.size());
     for (auto* c : items)
-        if (c != nullptr) c->setBounds (row.removeFromLeft (w).reduced (2, 0));
+    {
+        const auto cell = row.removeFromLeft (w); // a nullptr leaves an empty cell
+        if (c != nullptr) c->setBounds (cell.reduced (2, 0));
+    }
 }
 
 // EQ / filter curve display from a set of biquads
@@ -318,55 +331,127 @@ inline void drawMascot (juce::Graphics& g, juce::Rectangle<float> area, float bl
 //==============================================================================
 // Editor base: the UI is laid out at a fixed "design" size inside `content`
 // and scaled to whatever size the user drags the window to.
-class ScaledEditor : public juce::AudioProcessorEditor
+// Layers inside `content`, back to front:
+//   animated cosmic sky (content.paint) -> static layer (paintFn, cached image)
+//   -> dynamic layer (overFn: texts that change) -> controls -> "i" icons -> gear -> settings panel
+class ScaledEditor : public juce::AudioProcessorEditor, private juce::ChangeListener
 {
 public:
-    ScaledEditor (juce::AudioProcessor& p, int designWidth, int designHeight, float defaultScale)
-        : juce::AudioProcessorEditor (&p), baseW (designWidth), baseH (designHeight)
+    ScaledEditor (juce::AudioProcessor& p, int designWidth, int designHeight, float defaultScale, const juce::String& pluginIdIn = "space")
+        : juce::AudioProcessorEditor (&p), baseW (designWidth), baseH (designHeight), pluginId (pluginIdIn)
     {
         setLookAndFeel (&lookAndFeel);
+        theme = makeTheme (pluginId);
+        content.owner = this;
         addAndMakeVisible (content);
         content.setBounds (0, 0, baseW, baseH);
+
+        staticLayer.fn = [this] (juce::Graphics& g) { if (content.paintFn) content.paintFn (g); };
+        dynamicLayer.fn = [this] (juce::Graphics& g) { if (content.overFn) content.overFn (g); };
+        for (auto* l : { &staticLayer, &dynamicLayer })
+        {
+            l->setInterceptsMouseClicks (false, false);
+            l->setBounds (0, 0, baseW, baseH);
+            content.addAndMakeVisible (l);
+        }
+        staticLayer.setBufferedToImage (true);
+
+        gearBounds = { baseW - 42, 20, 26, 26 };
+        gear.onClick = [this] { showSettings(); };
+        content.addAndMakeVisible (gear);
+
         setResizable (true, true);
         setResizeLimits ((int) (baseW * 0.5f), (int) (baseH * 0.5f), (int) (baseW * 1.6f), (int) (baseH * 1.6f));
         if (auto* c = getConstrainer())
             c->setFixedAspectRatio ((double) baseW / (double) baseH);
-        setSize ((int) (baseW * defaultScale), (int) (baseH * defaultScale));
+        const float scale = settings->windowScale (pluginId, defaultScale);
+        setSize ((int) (baseW * scale), (int) (baseH * scale));
+
+        settings->addChangeListener (this);
+        anim.cb = [this] { tick(); };
     }
 
-    ~ScaledEditor() override { setLookAndFeel (nullptr); }
+    ~ScaledEditor() override
+    {
+        anim.stopTimer();
+        settings->removeChangeListener (this);
+        setLookAndFeel (nullptr);
+    }
 
     void resized() override
     {
         content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) baseW));
     }
 
-    void paint (juce::Graphics& g) override { g.fillAll (LNF::background); }
+    void paint (juce::Graphics& g) override { g.fillAll (theme.bot); }
 
 protected:
+    struct Layer : public juce::Component
+    {
+        std::function<void (juce::Graphics&)> fn;
+        void paint (juce::Graphics& g) override { if (fn) fn (g); }
+    };
     struct Content : public juce::Component
     {
-        std::function<void (juce::Graphics&)> paintFn;
+        ScaledEditor* owner = nullptr;
+        std::function<void (juce::Graphics&)> paintFn; // static drawing (panels, labels): cached
+        std::function<void (juce::Graphics&)> overFn;  // changing texts, drawn above the static layer
         std::function<void()> layoutFn;
-        void paint (juce::Graphics& g) override { if (paintFn) paintFn (g); }
+        void paint (juce::Graphics& g) override { if (owner) owner->paintSky (g); }
         void resized() override { if (layoutFn) layoutFn(); }
     };
 
+    juce::SharedResourcePointer<UISettings> settings;
     LNF lookAndFeel; // declared before content so it outlives every child
+    juce::TooltipWindow tooltipWindow { this, 350 };
     Content content;
+    Layer staticLayer, dynamicLayer;
     const int baseW, baseH;
+    juce::String pluginId;
+    Theme theme;
+    CosmicSky sky;
+    GearButton gear;
+    juce::Rectangle<int> gearBounds;
+    std::vector<SettingsExtra> settingsExtras;      // plugin-specific settings shown under the wheel
+    std::function<void()> extraReset;               // called after "reset the plugin"
+    std::function<float()> levelDb;                 // output level, makes the sky react to the music
+    juce::OwnedArray<InfoIcon> infoIcons;
 
-    // Standard background + header used by every plugin of the suite
+    juce::Colour panelBase() const { return theme.panel.withAlpha (0.78f); }
+    void drawModuleT (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& name, juce::Colour accent, bool narrow = false) const { drawModule (g, r, name, accent, panelBase(), narrow); }
+    void drawPanelT (juce::Graphics& g, juce::Rectangle<int> r, juce::Colour accent) const { drawPanel (g, r.toFloat(), accent, panelBase()); }
+
+    // "i" next to a module tag (design coordinates)
+    InfoIcon& addInfo (int x, int y, const juce::String& textUtf8)
+    {
+        auto* i = infoIcons.add (new InfoIcon (textUtf8));
+        i->setBounds (x, y, 18, 18);
+        content.addAndMakeVisible (i);
+        return *i;
+    }
+    // i placed right after a module tag drawn by drawModule()
+    InfoIcon& addModuleInfo (juce::Rectangle<int> panel, const juce::String& name, const juce::String& text, bool narrow = false)
+    {
+        return addInfo (panel.getX() + 12 + (int) tagWidth (name, narrow) + 6, panel.getY() + 12, text);
+    }
+    // compact ON button for narrow modules
+    static juce::Rectangle<int> onBoundsCompact (juce::Rectangle<int> panel) { return { panel.getRight() - 42, panel.getY() + 10, 34, 22 }; }
+    static juce::Rectangle<int> onBounds (juce::Rectangle<int> panel) { return { panel.getRight() - 60, panel.getY() + 10, 48, 22 }; }
+
+    // call at the end of the plugin editor constructor
+    void finishSetup (int seed, std::vector<CosmicSky::EyeSpot> eyes)
+    {
+        sky.setup (baseW, baseH, theme, seed, std::move (eyes));
+        gear.setBounds (gearBounds);
+        for (auto* i : infoIcons) i->toFront (false);
+        gear.toFront (false);
+        applySettings();
+    }
+
+    // Standard header used by every plugin of the suite (drawn in the static layer, over the sky)
     void paintBackgroundAndHeader (juce::Graphics& g, const juce::String& pluginName, const juce::String& subtitle)
     {
-        g.setGradientFill (juce::ColourGradient (LNF::backgroundLight, 0.0f, 0.0f,
-                                                 LNF::background, 0.0f, (float) baseH, false));
-        g.fillAll();
-        // subtle neon grid
-        g.setColour (LNF::pink.withAlpha (0.035f));
-        for (int x = 0; x < baseW; x += 32) g.drawVerticalLine (x, 0.0f, (float) baseH);
-        for (int y = 0; y < baseH; y += 32) g.drawHorizontalLine (y, 0.0f, (float) baseW);
-
+        sky.drawStaticStars (g);
         g.setColour (LNF::textDim);
         g.setFont (LNF::font (11.0f));
         g.drawText ("T C H I S K I B I D I", 18, 10, 300, 14, juce::Justification::centredLeft);
@@ -375,8 +460,90 @@ protected:
         g.drawText (pluginName.toUpperCase(), 18, 22, 400, 32, juce::Justification::centredLeft);
         g.setColour (LNF::textDim);
         g.setFont (LNF::font (11.0f, false));
-        g.drawText (subtitle, baseW - 318, 30, 300, 16, juce::Justification::centredRight);
+        g.drawText (subtitle, baseW - 360, 30, 300, 16, juce::Justification::centredRight);
     }
+
+    void paintSky (juce::Graphics& g)
+    {
+        sky.drawSky (g);
+        sky.drawOverlays (g, t, animating);
+    }
+
+private:
+    struct AnimTimer : public juce::Timer
+    {
+        std::function<void()> cb;
+        void timerCallback() override { if (cb) cb(); }
+    };
+
+    void changeListenerCallback (juce::ChangeBroadcaster*) override { applySettings(); }
+
+    void applySettings()
+    {
+        animating = settings->animations();
+        if (animating)
+        {
+            lastTick = juce::Time::getMillisecondCounterHiRes() * 0.001;
+            anim.startTimerHz (settings->fps());
+        }
+        else
+        {
+            anim.stopTimer();
+            sky.renderSky (7.0, 0.0f);
+            t = 7.0;
+        }
+        for (auto* i : infoIcons) i->setVisible (settings->infoBubbles());
+        content.repaint();
+    }
+
+    void tick()
+    {
+        const double now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+        const double dt = juce::jlimit (0.0, 0.1, now - lastTick);
+        lastTick = now;
+        t += dt;
+
+        float pulse = 0.0f;
+        if (settings->reactive() && levelDb)
+        {
+            const float lv = juce::jlimit (0.0f, 1.0f, (levelDb() + 48.0f) / 48.0f);
+            lvFast += (lv - lvFast) * 0.6f;
+            lvSlow += (lv - lvSlow) * (float) (1.0 - std::exp (-dt / 0.35));
+            lvLong += (lv - lvLong) * (float) (1.0 - std::exp (-dt / 6.0));
+            pulse = juce::jlimit (0.0f, 1.0f, (lvFast - lvSlow) * 4.0f);
+            // a loud passage after a calmer one: the eyes of the sky open
+            if (lvSlow > lvLong + 0.12f && lvSlow > 0.45f && t - lastEyes > 8.0)
+            {
+                sky.openEyesNow (t);
+                lastEyes = t;
+            }
+        }
+        smoothPulse = juce::jmax (pulse, smoothPulse * (float) std::exp (-dt * 6.0));
+        sky.renderSky (t, smoothPulse);
+        content.repaint();
+    }
+
+    void showSettings()
+    {
+        if (settingsPanel == nullptr)
+        {
+            settingsPanel = std::make_unique<SettingsPanel> (
+                pluginId, settingsExtras,
+                [this] { return (float) getWidth() / (float) baseW; },
+                [this] (float s) { settings->set ("scale_" + pluginId, s); setSize ((int) (baseW * s), (int) (baseH * s)); },
+                [this] { resetAllParameters (processor); if (extraReset) extraReset(); });
+            content.addChildComponent (*settingsPanel);
+            settingsPanel->setBounds (0, 0, baseW, baseH);
+        }
+        settingsPanel->setVisible (true);
+        settingsPanel->toFront (true);
+    }
+
+    std::unique_ptr<SettingsPanel> settingsPanel;
+    AnimTimer anim;
+    bool animating = true;
+    double t = 7.0, lastTick = 0.0, lastEyes = -100.0;
+    float lvFast = 0.0f, lvSlow = 0.0f, lvLong = 0.0f, smoothPulse = 0.0f;
 };
 
 } // namespace tchk

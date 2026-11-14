@@ -4,13 +4,13 @@ using tchk::LNF;
 
 namespace
 {
-    constexpr int kW = 640, kH = 970;
+    constexpr int kW = 640, kH = 1034;
     const juce::Colour cSpectral { 0xffff4fd8 }, cComp { 0xff8f7bff }, cEq { 0xffc6ff3d }, cStereo { 0xff3df5ff },
                        cAnalog { 0xffffa23d }, cClip { 0xffffe14d }, cLimiter { 0xffff4f6d };
 }
 
 MasterEditor::MasterEditor (MasterProcessor& p)
-    : tchk::ScaledEditor (p, kW, kH, 0.75f),
+    : tchk::ScaledEditor (p, kW, kH, 0.75f, "master"),
       audioProcessor (p),
       bypassButton (p.apvts, "bypass", "Bypass", LNF::pink),
       matchButton (p.apvts, "match", "Match", LNF::cyan),
@@ -29,7 +29,7 @@ MasterEditor::MasterEditor (MasterProcessor& p)
       clipGain (p.apvts, "clip_gain", "Gain", cClip),
       limGain (p.apvts, "lim_gain", "Gain", cLimiter), ceiling (p.apvts, "ceiling", "Ceiling", cLimiter),
       release (p.apvts, "release", "Release", cLimiter), output (p.apvts, "output", "Output", LNF::text),
-      spectralDisplay (p),
+      spectralDisplay (p), gauge (p), scope (p), spice (p),
       grLow ([&p] { return p.bandGrDb[0].load(); }, -12.0f, 0.0f, cComp, true),
       grMid ([&p] { return p.bandGrDb[1].load(); }, -12.0f, 0.0f, cComp, true),
       grHigh ([&p] { return p.bandGrDb[2].load(); }, -12.0f, 0.0f, cComp, true),
@@ -39,6 +39,9 @@ MasterEditor::MasterEditor (MasterProcessor& p)
 {
     content.paintFn = [this] (juce::Graphics& g) { paintContent (g); };
     content.layoutFn = [this] { layout(); };
+    content.overFn = [this] (juce::Graphics& g) { paintDynamic (g); };
+    levelDb = [&p] { return p.truePeakDb.load(); };
+    p.scopeWanted = true;
 
     // Top bar
     presetBox.setTextWhenNothingSelected ("PRESETS");
@@ -67,22 +70,48 @@ MasterEditor::MasterEditor (MasterProcessor& p)
              &inputKnob, &inputMeter, &autoButton, &targetBox,
              &specOn, &compOn, &eqOn, &stereoOn, &analogOn, &clipOn, &limOn, &bassMono,
              &specAmt, &glue, &detail, &bass, &air, &width, &color, &clipGain, &limGain, &ceiling, &release, &output,
-             &spectralDisplay, &grLow, &grMid, &grHigh, &clipMeter, &limMeter, &analogMode, &resetLufsButton })
+             &spectralDisplay, &grLow, &grMid, &grHigh, &clipMeter, &limMeter, &analogMode, &resetLufsButton, &gauge, &scope, &spice })
         content.addAndMakeVisible (c);
+    autoButton.toFront (false);
 
     layout();
+    const char* names[] = { "Spectral", "Comp", "EQ", "Stereo", "Analog", "Clip", "Limiter" };
+    const juce::String tips[] = {
+        TK_FR ("Équilibre automatiquement les graves, les médiums et les aigus, à petites doses. La courbe montre ce qu'il corrige."),
+        TK_FR ("GLUE soude le mix, DETAIL fait remonter les petits détails. Les barres L M H = graves, médiums, aigus."),
+        TK_FR ("BASS agit vers 80 Hz, AIR vers 12 kHz."),
+        TK_FR ("WIDTH élargit l'image. Le vectorscope montre ta stéréo : nuage vertical = mono, large = stéréo, à plat ou rouge = problème de phase. BASS MONO garde les basses au centre."),
+        TK_FR ("Saturation chaude : Tape, Tube ou Crunch. COLOR = quantité."),
+        TK_FR ("Arrondit les pics juste avant le limiteur."),
+        TK_FR ("GAIN monte le volume, CEILING = plafond à ne jamais dépasser (-1 dB conseillé), RELEASE = vitesse de relâchement, OUTPUT = volume final. La qualité (2x ou 4x) se règle dans la roue de réglages.") };
+    const juce::Rectangle<int> areas[] = { specArea, compArea, eqArea, stereoArea, analogArea, clipArea, limArea };
+    for (int i = 0; i < 7; ++i)
+        addInfo (areas[i].getX() + 120, areas[i].getY() + 15, tips[i]);
+    juce::ignoreUnused (names);
+    addInfo (440, 100, TK_FR ("La jauge montre le volume perçu (LUFS) en direct. La zone verte est ta CIBLE. AUTO règle le volume pour l'atteindre."));
+    addInfo (spiceArea.getX() + 238, spiceArea.getY() + 12, TK_FR ("Un seul curseur qui dose tout le mastering d'un coup : à gauche léger et naturel, à droite à fond. Les boutons des modules bougent tout seuls avec lui."));
+    const float boxW = (604.0f - 4 * 8.0f) / 5.0f;
+    addInfo (meterArea.getX() + (int) boxW - 22, meterArea.getY() + 4, TK_FR ("LUFS = volume perçu (S = 3 dernières secondes, I = moyenne du morceau). TRUE PEAK = pic le plus haut. DYNAMICS = écart entre pics et moyenne (OUVERT, PUNCHY, DENSE, ÉCRASÉ). STEREO = compatibilité mono (négatif = problème de phase)."));
+
+    settingsExtras.push_back ({ TK_FR ("Qualité du limiteur"), juce::StringArray { TK_FR ("Éco 2x (moins de CPU)"), TK_FR ("Haute 4x") },
+                                [this] { return audioProcessor.isOversamplingHQ() ? 1 : 0; },
+                                [this] (int v) { audioProcessor.setOversamplingHQ (v == 1); } });
+    extraReset = [this] { audioProcessor.setOversamplingHQ (true); };
+
+    finishSetup (55, { { 200, 14, 46 }, { 290, 36, 30 }, { 360, 12, 40 }, { 60, 240, 34 }, { 140, 196, 36 } });
     startTimerHz (30);
 }
 
 MasterEditor::~MasterEditor()
 {
     stopTimer();
+    audioProcessor.scopeWanted = false;
 }
 
 //==============================================================================
 void MasterEditor::layout()
 {
-    presetBox.setBounds (440, 20, 182, 26);
+    presetBox.setBounds (404, 20, 182, 26);
 
     int x = 18;
     for (auto* b : { &undoButton, &redoButton })
@@ -98,12 +127,15 @@ void MasterEditor::layout()
     matchButton.setBounds (536, 64, 86, 26);
 
     heroArea = { 18, 100, 604, 160 };
+    spiceArea = { 18, 272, 604, 56 };
+    gauge.setBounds (176, 96, 288, 168);
+    spice.setBounds (spiceArea.getX() + 270, spiceArea.getY() + 14, 316, 28);
     inputKnob.setBounds (22, 112, 90, 120);
     inputMeter.setBounds (116, 120, 10, 108);
     autoButton.setBounds (478, 104, 110, 110);
     targetBox.setBounds (463, 224, 140, 26);
 
-    constexpr int rowH = 112, gap = 8, top = 270;
+    constexpr int rowH = 112, gap = 8, top = 334;
     specArea   = { 18, top, 604, rowH };
     compArea   = { 18, top + (rowH + gap), 604, rowH };
     eqArea     = { 18, top + 2 * (rowH + gap), 298, rowH };
@@ -132,8 +164,9 @@ void MasterEditor::layout()
     air.setBounds (knobAt (eqArea, 204));
 
     stereoOn.setBounds (onBounds (stereoArea));
-    width.setBounds (knobAt (stereoArea, 118));
-    bassMono.setBounds (stereoArea.getX() + 208, stereoArea.getY() + 26, 80, 24);
+    width.setBounds (knobAt (stereoArea, 110));
+    bassMono.setBounds (stereoArea.getX() + 12, stereoArea.getY() + 42, 92, 22);
+    scope.setBounds (stereoArea.getX() + 202, stereoArea.getY() + 8, 88, 96);
 
     analogOn.setBounds (onBounds (analogArea));
     color.setBounds (knobAt (analogArea, 118));
@@ -159,18 +192,44 @@ void MasterEditor::paintContent (juce::Graphics& g)
 {
     paintBackgroundAndHeader (g, "Master", {});
 
-    // Hero: mascot looking at the mouse
-    auto mouse = content.getMouseXYRelative().toFloat();
-    const juce::Point<float> centre (320.0f, 180.0f);
-    const juce::Point<float> look (juce::jlimit (-1.0f, 1.0f, (mouse.x - centre.x) / 250.0f),
-                                   juce::jlimit (-1.0f, 1.0f, (mouse.y - centre.y) / 250.0f));
-    const bool bypassed = audioProcessor.apvts.getRawParameterValue ("bypass")->load() > 0.5f;
-    const float squint = juce::jlimit (0.0f, 0.35f, -audioProcessor.limiterGrDb.load() / 12.0f);
-    tchk::drawMascot (g, { 220.0f, 96.0f, 200.0f, 168.0f }, bypassed ? 0.9f : juce::jmax (blink, squint), look, glowPhase);
-
     g.setColour (LNF::textDim);
     g.setFont (LNF::font (10.0f));
     g.drawText ("CIBLE", 463, 252, 140, 12, juce::Justification::centred);
+
+    // SPICE MOI CA BABY panel
+    {
+        const auto r = spiceArea.toFloat();
+        g.setColour (juce::Colour (30, 8, 6).withAlpha (0.8f));
+        g.fillRoundedRectangle (r, 14.0f);
+        juce::ColourGradient cg (juce::Colour (255, 90, 40).withAlpha (0.28f), r.getX(), 0.0f, juce::Colour (255, 60, 100).withAlpha (0.28f), r.getRight(), 0.0f, false);
+        cg.addColour (0.6, juce::Colour (255, 200, 60).withAlpha (0.18f));
+        g.setGradientFill (cg);
+        g.fillRoundedRectangle (r, 14.0f);
+        g.setColour (juce::Colour (255, 140, 60).withAlpha (0.6f));
+        g.drawRoundedRectangle (r.reduced (0.75f), 14.0f, 1.5f);
+        // chili
+        const float cx = r.getX() + 14.0f, cy = r.getY() + 11.0f;
+        juce::Path stem, chili, shine;
+        stem.startNewSubPath (cx + 15.0f, cy + 7.0f); stem.cubicTo (cx + 15.0f, cy + 3.0f, cx + 19.0f, cy + 1.0f, cx + 21.0f, cy + 2.0f);
+        chili.startNewSubPath (cx + 13.0f, cy + 8.0f);
+        chili.cubicTo (cx + 22.0f, cy + 8.0f, cx + 24.0f, cy + 16.0f, cx + 20.0f, cy + 24.0f);
+        chili.cubicTo (cx + 17.0f, cy + 30.0f, cx + 9.0f, cy + 33.0f, cx + 4.0f, cy + 32.0f);
+        chili.cubicTo (cx + 9.0f, cy + 28.0f, cx + 6.0f, cy + 20.0f, cx + 8.0f, cy + 14.0f);
+        chili.cubicTo (cx + 9.0f, cy + 10.0f, cx + 10.0f, cy + 8.0f, cx + 13.0f, cy + 8.0f);
+        chili.closeSubPath();
+        shine.startNewSubPath (cx + 12.0f, cy + 12.0f); shine.cubicTo (cx + 10.0f, cy + 16.0f, cx + 10.0f, cy + 20.0f, cx + 11.0f, cy + 23.0f);
+        g.setColour (juce::Colour (0xff6bd65a)); g.strokePath (stem, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (juce::Colour (0xffff3d3d)); g.fillPath (chili);
+        g.setColour (juce::Colour (0xff7a0a0a)); g.strokePath (chili, juce::PathStrokeType (1.5f));
+        g.setColour (juce::Colour (0xffff9a9a)); g.strokePath (shine, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        g.setColour (juce::Colour (0xffffd27a));
+        g.setFont (LNF::font (17.0f));
+        g.drawText (TK_FR ("SPICE MOI ÇA BABY"), (int) r.getX() + 46, (int) r.getY() + 10, 200, 22, juce::Justification::centredLeft);
+        g.setColour (juce::Colour (0xffffb38a));
+        g.setFont (LNF::font (10.0f, false));
+        g.drawText ("un seul curseur pour tout le master", (int) r.getX() + 46, (int) r.getY() + 32, 200, 14, juce::Justification::centredLeft);
+    }
 
     // Modules
     struct M { juce::Rectangle<int> r; const char* name; juce::Colour c; };
@@ -178,7 +237,7 @@ void MasterEditor::paintContent (juce::Graphics& g)
                            M { stereoArea, "Stereo", cStereo }, M { analogArea, "Analog", cAnalog }, M { clipArea, "Clip", cClip },
                            M { limArea, "Limiter", cLimiter } })
     {
-        tchk::drawPanel (g, m.r.toFloat(), m.c);
+        drawPanelT (g, m.r, m.c);
         tchk::drawTag (g, { (float) m.r.getX() + 12.0f, (float) m.r.getY() + 12.0f, 100.0f, 24.0f }, m.name, m.c);
     }
 
@@ -188,32 +247,24 @@ void MasterEditor::paintContent (juce::Graphics& g)
     for (int b = 0; b < 3; ++b)
         g.drawText (bandNames[b], compArea.getX() + 280 + b * 20, compArea.getY() + 90, 20, 12, juce::Justification::centred);
     g.drawText ("GR", compArea.getX() + 280, compArea.getY() + 4, 60, 12, juce::Justification::centred);
-
-    // Stereo correlation
-    {
-        auto bar = juce::Rectangle<float> ((float) stereoArea.getX() + 208.0f, (float) stereoArea.getY() + 70.0f, 80.0f, 8.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.45f));
-        g.fillRoundedRectangle (bar, 3.0f);
-        const float px = bar.getX() + (corr * 0.5f + 0.5f) * bar.getWidth();
-        g.setColour (corr < 0.0f ? LNF::pink : cStereo);
-        g.fillEllipse (px - 5.0f, bar.getCentreY() - 5.0f, 10.0f, 10.0f);
-        g.setColour (LNF::textDim);
-        g.drawText ("-1        PHASE        +1", bar.translated (0, 12).withHeight (12).toNearestInt(), juce::Justification::centred);
-    }
-
-    // Limiter info
-    g.setColour (LNF::textDim);
     g.drawText ("GR", limArea.getX() + 494, limArea.getY() + 4, 24, 12, juce::Justification::centred);
+    g.drawText ("TRUE PEAK", limArea.getX() + 522, limArea.getY() + 54, 70, 12, juce::Justification::centredLeft);
+    g.drawText ("4x OVERSAMPLE", limArea.getX() + 522, limArea.getY() + 68, 80, 12, juce::Justification::centredLeft);
+    g.drawText ("GR", clipArea.getX() + 224, clipArea.getY() + 4, 24, 12, juce::Justification::centred);
+}
+
+void MasterEditor::paintDynamic (juce::Graphics& g)
+{
     g.setColour (cLimiter);
     g.setFont (LNF::font (13.0f));
     g.drawText (juce::String (audioProcessor.limiterGrDb.load(), 1) + " dB", limArea.getX() + 522, limArea.getY() + 30, 70, 18, juce::Justification::centredLeft);
-    g.setColour (LNF::textDim);
-    g.setFont (LNF::font (10.0f));
-    g.drawText ("TRUE PEAK", limArea.getX() + 522, limArea.getY() + 54, 70, 12, juce::Justification::centredLeft);
-    g.drawText ("4x OVERSAMPLE", limArea.getX() + 522, limArea.getY() + 68, 80, 12, juce::Justification::centredLeft);
-
-    g.drawText ("GR", clipArea.getX() + 224, clipArea.getY() + 4, 24, 12, juce::Justification::centred);
-
+    if (! audioProcessor.isOversamplingHQ())
+    {
+        // cover "4x" with the real factor
+        g.setColour (LNF::textDim);
+        g.setFont (LNF::font (10.0f));
+        g.drawText ("(2x en Eco)", limArea.getX() + 522, limArea.getY() + 82, 80, 12, juce::Justification::centredLeft);
+    }
     // Bottom meter strip
     const float target = MasterProcessor::getTargetLufs ((int) audioProcessor.apvts.getRawParameterValue ("target")->load());
     const float ceilingDb = audioProcessor.apvts.getRawParameterValue ("ceiling")->load();
@@ -255,6 +306,7 @@ void MasterEditor::paintContent (juce::Graphics& g)
     }
 }
 
+
 //==============================================================================
 void MasterEditor::timerCallback()
 {
@@ -286,9 +338,17 @@ void MasterEditor::timerCallback()
         audioProcessor.undoManager.beginNewTransaction();
 
     spectralDisplay.repaint();
-    content.repaint (heroArea.getUnion ({ 200, 90, 240, 180 }));
+    gauge.blink = audioProcessor.apvts.getRawParameterValue ("bypass")->load() > 0.5f ? 0.9f : juce::jmax (blink, juce::jlimit (0.0f, 0.35f, -audioProcessor.limiterGrDb.load() / 12.0f));
+    gauge.glow = glowPhase;
+    {
+        auto mouse = content.getMouseXYRelative().toFloat();
+        gauge.look = { juce::jlimit (-1.0f, 1.0f, (mouse.x - 320.0f) / 250.0f), juce::jlimit (-1.0f, 1.0f, (mouse.y - 200.0f) / 250.0f) };
+    }
+    gauge.repaint();
+    scope.pull();
+    scope.repaint();
+    spice.repaint();
     content.repaint (meterArea);
-    content.repaint (stereoArea);
     content.repaint (limArea.withTrimmedLeft (480));
 }
 
@@ -367,4 +427,150 @@ void MasterEditor::SpectralDisplay::paint (juce::Graphics& g)
     g.strokePath (curve, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (c);
     g.strokePath (curve, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+//==============================================================================
+void MasterEditor::LoudnessGauge::paint (juce::Graphics& g)
+{
+    const float w = (float) getWidth(), h = (float) getHeight();
+    const float cx = w * 0.5f, cy = h - 16.0f, R = 128.0f;
+    constexpr float lo = -24.0f, hi = -4.0f;
+    auto ang = [] (float v) { return juce::degreesToRadians (-200.0f + (juce::jlimit (lo, hi, v) - lo) / (hi - lo) * 220.0f); };
+    auto pt = [&] (float a, float rad) { return juce::Point<float> (cx + std::cos (a) * rad, cy + std::sin (a) * rad); };
+    auto arc = [&] (float v0, float v1, float rad)
+    {
+        juce::Path p;
+        const int steps = juce::jmax (2, (int) ((v1 - v0) * 3.0f));
+        for (int i = 0; i <= steps; ++i)
+        {
+            const auto q = pt (ang (v0 + (v1 - v0) * (float) i / (float) steps), rad);
+            if (i == 0) p.startNewSubPath (q); else p.lineTo (q);
+        }
+        return p;
+    };
+    const float target = MasterProcessor::getTargetLufs ((int) proc.apvts.getRawParameterValue ("target")->load());
+    const float now = proc.outputLoudness.shortTerm.load();
+    if (now > -70.0f) shown += (now - shown) * 0.15f; else shown += (-30.0f - shown) * 0.05f;
+
+    const juce::PathStrokeType thick (10.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.strokePath (arc (lo, hi, R), thick);
+    g.setColour (LNF::lime.withAlpha (0.3f));
+    g.strokePath (arc (target - 1.0f, target + 1.0f, R), juce::PathStrokeType (16.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (LNF::lime);
+    g.strokePath (arc (target - 1.0f, target + 1.0f, R), thick);
+
+    const auto col = std::abs (shown - target) <= 1.0f ? LNF::lime : (shown > target ? LNF::pink : LNF::cyan);
+    if (shown > lo)
+    {
+        g.setColour (col);
+        g.strokePath (arc (lo, juce::jmin (hi, shown), R - 12.0f), juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    g.setFont (LNF::font (9.0f));
+    for (float v = lo; v <= hi; v += 2.0f)
+    {
+        const bool major = ((int) v % 4) == 0;
+        g.setColour (LNF::textDim);
+        g.drawLine ({ pt (ang (v), R + 7.0f), pt (ang (v), R + (major ? 12.0f : 10.0f)) }, 1.0f);
+        if (v == -24.0f || v == -18.0f || v == -14.0f || v == -10.0f || v == -6.0f)
+            g.drawText (juce::String ((int) v), juce::Rectangle<float> (24.0f, 12.0f).withCentre (pt (ang (v), R + 22.0f)), juce::Justification::centred);
+    }
+    const float a = ang (shown);
+    g.setColour (juce::Colours::white);
+    g.drawLine ({ pt (a, R - 22.0f), pt (a, R + 6.0f) }, 3.0f);
+    g.setColour (col.withAlpha (0.4f));
+    g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (pt (a, R + 6.0f)));
+
+    tchk::drawMascot (g, { 86.0f, 54.0f, 116.0f, 98.0f }, blink, look, glow);
+
+    g.setColour (col);
+    g.setFont (LNF::font (15.0f));
+    g.drawText (now > -70.0f ? juce::String (shown, 1) + " LUFS" : juce::String ("-- LUFS"), juce::Rectangle<float> (cx - 60.0f, cy - 4.0f, 120.0f, 18.0f), juce::Justification::centred);
+}
+
+//==============================================================================
+void MasterEditor::Vectorscope::pull()
+{
+    auto& f = proc.scopeFifo;
+    int s1, n1, s2, n2;
+    f.prepareToRead (f.getNumReady(), s1, n1, s2, n2);
+    auto take = [&] (int start, int count)
+    {
+        for (int k = 0; k < count; ++k)
+        {
+            l[(size_t) pos] = proc.scopeL[(size_t) (start + k)];
+            r[(size_t) pos] = proc.scopeR[(size_t) (start + k)];
+            pos = (pos + 1) % N;
+        }
+    };
+    take (s1, n1);
+    take (s2, n2);
+    f.finishedRead (n1 + n2);
+}
+
+void MasterEditor::Vectorscope::paint (juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat();
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (b, 8.0f);
+    const float cx = b.getCentreX(), cy = b.getCentreY(), R = juce::jmin (b.getWidth(), b.getHeight()) * 0.5f - 6.0f;
+    g.setColour (cStereo.withAlpha (0.18f));
+    juce::Path diamond;
+    diamond.startNewSubPath (cx, cy - R); diamond.lineTo (cx + R, cy); diamond.lineTo (cx, cy + R); diamond.lineTo (cx - R, cy); diamond.closeSubPath();
+    g.strokePath (diamond, juce::PathStrokeType (1.0f));
+    g.drawVerticalLine ((int) cx, cy - R, cy + R);
+    g.drawHorizontalLine ((int) cy, cx - R, cx + R);
+
+    const float corr = proc.correlation.load();
+    g.setColour ((corr < 0.0f ? LNF::pink : cStereo).withAlpha (0.75f));
+    for (int i = 0; i < N; ++i)
+    {
+        const float L = l[(size_t) i], Rr = r[(size_t) i];
+        const float mid = (L + Rr) * 0.7071f, side = (Rr - L) * 0.7071f;
+        const float x = cx + juce::jlimit (-1.0f, 1.0f, side) * R, y = cy - juce::jlimit (-1.0f, 1.0f, mid) * R;
+        g.fillRect (x, y, 1.4f, 1.4f);
+    }
+    g.setColour (LNF::textDim);
+    g.setFont (LNF::font (8.0f));
+    g.drawText ("M", (int) cx + 2, 2, 10, 10, juce::Justification::centredLeft);
+    g.drawText ("G", 3, (int) cy - 11, 10, 10, juce::Justification::centredLeft);
+    g.drawText ("D", (int) b.getRight() - 10, (int) cy - 11, 10, 10, juce::Justification::centredLeft);
+}
+
+//==============================================================================
+MasterEditor::SpiceSlider::SpiceSlider (MasterProcessor& p)
+    : proc (p), att (*p.apvts.getParameter ("spice"), [this] (float v) { value = v; repaint(); })
+{
+    att.sendInitialUpdate();
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void MasterEditor::SpiceSlider::setFromX (float x)
+{
+    value = juce::jlimit (0.0f, 1.0f, x / (float) getWidth());
+    att.setValueAsPartOfGesture (value);
+    proc.applySpice (value);
+    repaint();
+}
+
+void MasterEditor::SpiceSlider::mouseDown (const juce::MouseEvent& e) { att.beginGesture(); setFromX (e.position.x); }
+void MasterEditor::SpiceSlider::mouseDrag (const juce::MouseEvent& e) { setFromX (e.position.x); }
+void MasterEditor::SpiceSlider::mouseUp (const juce::MouseEvent&) { att.endGesture(); }
+
+void MasterEditor::SpiceSlider::paint (juce::Graphics& g)
+{
+    const float w = (float) getWidth();
+    const auto track = juce::Rectangle<float> (0.0f, 10.0f, w, 8.0f);
+    juce::ColourGradient cg (juce::Colour (0xffffe14d), 0.0f, 0.0f, juce::Colour (0xffff2a6d), w, 0.0f, false);
+    cg.addColour (0.4, juce::Colour (0xffffa23d));
+    cg.addColour (0.75, juce::Colour (0xffff4f3d));
+    g.setGradientFill (cg);
+    g.fillRoundedRectangle (track, 4.0f);
+    const float x = value * w;
+    g.setColour (juce::Colour (255, juce::jlimit (0, 255, (int) (150.0f - value * 110.0f)), 40).withAlpha (0.35f + value * 0.4f));
+    g.fillEllipse (juce::Rectangle<float> (28.0f + value * 16.0f, 28.0f + value * 16.0f).withCentre ({ x, 14.0f }));
+    g.setColour (juce::Colour (0xfffff4e0));
+    g.fillEllipse (juce::Rectangle<float> (24.0f, 24.0f).withCentre ({ x, 14.0f }));
+    g.setColour (juce::Colour (0xffff6a3d));
+    g.drawEllipse (juce::Rectangle<float> (24.0f, 24.0f).withCentre ({ x, 14.0f }), 3.0f);
 }

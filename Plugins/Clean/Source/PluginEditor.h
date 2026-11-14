@@ -7,7 +7,7 @@ class CleanEditor : public tchk::ScaledEditor, private juce::Timer
 {
 public:
     explicit CleanEditor (CleanProcessor&);
-    ~CleanEditor() override { stopTimer(); }
+    ~CleanEditor() override { stopTimer(); audioProcessor.displayWanted = false; }
 
 private:
     struct SpectrumView : public juce::Component
@@ -21,6 +21,8 @@ private:
 
     void timerCallback() override;
     void paintContent (juce::Graphics&);
+    void paintDynamic (juce::Graphics&);
+    float phase = 0.0f;
     void layout();
 
     CleanProcessor& audioProcessor;

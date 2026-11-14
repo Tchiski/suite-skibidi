@@ -52,6 +52,7 @@ public:
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockInternal (juce::AudioBuffer<float>&, juce::MidiBuffer&);
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -73,11 +74,13 @@ public:
     void clearProfile();
 
     juce::AudioProcessorValueTreeState apvts;
+    std::atomic<float> inputPeakDb { -100.0f }, outputPeakDb { -100.0f }; // for the meters / animated sky
 
     // display data (log-spaced bins, dB)
     std::array<std::atomic<float>, displayBins> displayInput {}, displayNoise {};
     std::atomic<int> clicksRepaired { 0 };
     std::atomic<float> learnProgress { 0.0f };
+    std::atomic<bool> displayWanted { false }; // the editor shows the spectrum
 
 private:
     void timerCallback() override;

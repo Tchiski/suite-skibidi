@@ -31,8 +31,8 @@ public:
     void setCurrentProgram (int) override {}
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
-    void getStateInformation (juce::MemoryBlock& d) override { tchk::saveState (apvts, d); }
-    void setStateInformation (const void* data, int size) override { tchk::loadState (apvts, data, size); }
+    void getStateInformation (juce::MemoryBlock& d) override { apvts.state.setProperty ("tune_range", tuneRange.load(), nullptr); tchk::saveState (apvts, d); }
+    void setStateInformation (const void* data, int size) override { tchk::loadState (apvts, data, size); tuneRange = (int) apvts.state.getProperty ("tune_range", 1); }
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     static juce::StringArray getPresetNames();
@@ -43,6 +43,7 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
     tchk::AutoTune autotune;
+    std::atomic<int> tuneRange { 1 }; // settings wheel: voice range of the autotune (saved in the project)
     std::atomic<float> levelerDb { 0.0f }, deesserGrDb { 0.0f }, compGrDb { 0.0f }, inputPeakDb { -100.0f }, outputPeakDb { -100.0f };
 
 private:

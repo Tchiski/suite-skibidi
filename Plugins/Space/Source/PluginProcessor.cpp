@@ -196,7 +196,18 @@ float TchiskibidiSpaceProcessor::readDelay (int channel, float delayInSamples) c
     return ((c3 * frac + c2) * frac + c1) * frac + y1;
 }
 
-void TchiskibidiSpaceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void TchiskibidiSpaceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    const int nCh = juce::jmin (2, buffer.getNumChannels());
+    float in = 0.0f, out = 0.0f;
+    for (int ch = 0; ch < nCh; ++ch) in = juce::jmax (in, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+    processBlockInternal (buffer, midiMessages);
+    for (int ch = 0; ch < nCh; ++ch) out = juce::jmax (out, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+    inputPeakDb = in > 1.0e-5f ? 20.0f * std::log10 (in) : -100.0f;
+    outputPeakDb = out > 1.0e-5f ? 20.0f * std::log10 (out) : -100.0f;
+}
+
+void TchiskibidiSpaceProcessor::processBlockInternal (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 

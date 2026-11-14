@@ -59,6 +59,19 @@ public:
     std::array<std::atomic<float>, 3> bandGrDb {};
     std::array<std::atomic<float>, numSpectralBands> spectralGainDb {};
 
+    // Limiter quality (settings wheel): true = 4x oversampling, false = 2x (less CPU)
+    void setOversamplingHQ (bool hq);
+    bool isOversamplingHQ() const noexcept { return osFactorLog2 == 2; }
+
+    // SPICE MOI CA BABY: one macro that sets the whole master (called from the editor)
+    void applySpice (float amount);
+
+    // Vectorscope feed (only filled while the editor shows it)
+    static constexpr int scopeSize = 2048;
+    std::atomic<bool> scopeWanted { false };
+    juce::AbstractFifo scopeFifo { scopeSize };
+    std::array<float, scopeSize> scopeL {}, scopeR {};
+
 private:
     void timerCallback() override; // AUTO loudness targeting
     void setParam (const juce::String& id, float value);
