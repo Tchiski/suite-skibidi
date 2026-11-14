@@ -41,6 +41,10 @@ public:
         setColour (juce::PopupMenu::highlightedTextColourId, text);
         setColour (juce::ToggleButton::textColourId, text);
         setColour (juce::ToggleButton::tickColourId, pink);
+        setColour (juce::TextButton::buttonColourId, panelLight);
+        setColour (juce::TextButton::buttonOnColourId, pink);
+        setColour (juce::TextButton::textColourOffId, text);
+        setColour (juce::TextButton::textColourOnId, background);
     }
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -121,6 +125,24 @@ public:
         arrow.addTriangle (ax, ay - 3.0f, ax + 8.0f, ay - 3.0f, ax + 4.0f, ay + 3.0f);
         g.setColour (text.withAlpha (box.isEnabled() ? 0.9f : 0.3f));
         g.fillPath (arrow);
+    }
+
+    void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&,
+                               bool highlighted, bool down) override
+    {
+        const auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
+        const bool on = button.getToggleState();
+        auto c = on ? button.findColour (juce::TextButton::buttonOnColourId)
+                    : button.findColour (juce::TextButton::buttonColourId);
+        if (highlighted) c = c.brighter (0.15f);
+        if (down) c = c.darker (0.2f);
+        g.setColour (c.withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.4f));
+        g.fillRoundedRectangle (bounds, 6.0f);
+    }
+
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
+    {
+        return font (juce::jmin (13.0f, (float) buttonHeight * 0.5f));
     }
 
     juce::Font getComboBoxFont (juce::ComboBox&) override { return font (13.0f); }

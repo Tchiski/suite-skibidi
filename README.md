@@ -2,13 +2,71 @@
 
 Suite de plugins audio maison, en VST3 et AU, qui marche dans Ableton, FL Studio, Logic, Reaper, Bitwig…
 
-| Plugin | Statut | Description |
+| Plugin | Inspiré de | Ce qu'il fait |
 |---|---|---|
+| **Tchiskibidi Master** | LeMaster, Ozone | Mastering complet en un plugin, avec bouton AUTO |
+| **Tchiskibidi Mix** | Neutron | Tout le traitement d'une piste : EQ, compresseur, transitoires, exciteur, clipper |
+| **Tchiskibidi Vocal** | Nectar | Chaîne voix complète : auto-level, de-esser, EQ, comp, saturation, doubleur, delay, reverb |
+| **Tchiskibidi Clean** | RX | Nettoyage : débruiteur, anti-ronflette, anti-clics |
+| **Tchiskibidi Space** | – | Écho façon bande + reverb |
+
+---|---|---|
 | **Tchiskibidi Space** | v0.1 | Écho stéréo façon bande + reverb |
 | Distortion | à venir | |
 | Filter | à venir | |
 | EQ | à venir | |
 | Synth | à venir | |
+
+---
+
+## Tchiskibidi Master : mode d'emploi
+
+À mettre **en dernier** sur ta piste Master.
+
+1. Choisis un **preset** (Rap / Trap, Pop / Voix, Club…) ou garde « Défaut ».
+2. Choisis ta **CIBLE** sous le bouton AUTO : *Streaming -14* (Spotify, Deezer…), *Fort -10* (rap actuel), *Club -8*…
+3. Appuie sur **AUTO** et lance la partie la plus forte de ton son pendant 10 à 20 secondes : le Master règle tout seul le
+   gain du limiteur pour atteindre la cible. Le compteur **LUFS S** affiche « OK » quand c'est bon. Coupe AUTO ensuite.
+4. Ajuste à l'oreille et compare avec **BYPASS**. Avec **MATCH** activé, l'original est joué au même volume, ce qui permet
+   de comparer honnêtement (plus fort paraît toujours meilleur).
+
+| Module | Réglages |
+|---|---|
+| **Spectral** | Équilibre tonal automatique : compare ton son à l'équilibre d'un master moderne et corrige doucement. *Amount* règle la force. La courbe montre ce qui est corrigé. |
+| **Comp** | *Glue* : compresseur 3 bandes (L/M/H) qui « colle » le mix. *Detail* : remonte les petits détails (compression vers le haut). |
+| **EQ** | *Bass* (80 Hz) et *Air* (12 kHz). |
+| **Stereo** | *Width* : largeur stéréo. *Bass mono* : met les basses (sous 120 Hz) en mono, indispensable en club. Le point PHASE doit rester à droite. |
+| **Analog** | Saturation *Tape*, *Tube* ou *Crunch*. *Color* règle la chaleur. |
+| **Clip** | Coupe doucement les pics avant le limiteur, pour gagner du volume sans écraser. |
+| **Limiter** | *Gain* : volume. *Ceiling* : plafond (-1 dB conseillé pour le streaming). True peak, oversampling 4x. |
+
+Compteurs du bas : **LUFS S** (volume des 3 dernières secondes), **LUFS I** (volume moyen du morceau, RESET pour
+recommencer), **TRUE PEAK**, **DYNAMICS** (PUNCHY = bien, ÉCRASÉ = trop compressé) et **STEREO** (PHASE ! = problème).
+Il y a aussi **UNDO/REDO** et deux mémoires **A/B** pour comparer deux réglages.
+
+## Tchiskibidi Mix
+À mettre sur n'importe quelle piste (kick, 808, snare, guitare, bus…). Choisis un preset puis ajuste :
+**EQ** 4 bandes + low cut avec courbe · **Comp** (threshold, ratio, attack, release, mix parallèle, gain automatique) ·
+**Transient** (*Punch* = plus d'attaque, *Sustain* = plus ou moins de queue) · **Exciter** (ajoute des harmoniques
+brillantes) · **Clip** · **Stereo** · **In/Out**.
+
+## Tchiskibidi Vocal
+À mettre sur ta piste voix (presets : Rap lead, Rap douce / mélo, Chant pop, Backs, Adlibs, Podcast, Lo-fi) :
+**Level** (égalise automatiquement le volume de la voix) · **De-ess** (adoucit les « s ») · **EQ voix** (low cut, boue,
+présence, air) · **Comp** (*Speed* = rapidité) · **Warm** (saturation à lampe) · **Double** (doublage stéréo) ·
+**Delay** calé sur le tempo · **Reverb**.
+La correction de justesse (type autotune) n'est pas encore incluse : ce sera un plugin à part.
+
+## Tchiskibidi Clean
+Pour réparer un enregistrement (souffle, ronflette, clics) :
+- **De-noise** : en mode *Adaptatif*, il suit le bruit tout seul. Pour un meilleur résultat, lance un passage où on
+  n'entend **que le bruit** (sans voix), puis appuie sur **LEARN** : il écoute 3 secondes et apprend le bruit.
+  *Reduction* = combien on enlève, *Sensibilité* = jusqu'où on considère que c'est du bruit.
+- **De-hum** : enlève la ronflette électrique (50 Hz en Europe) et ses harmoniques.
+- **De-click** : enlève les clics et craquements.
+- **Écoute** : « Écouter le bruit retiré » fait entendre uniquement ce qui est enlevé. Si tu entends la voix, baisse les réglages.
+
+Clean ajoute environ 45 ms de latence (compensée automatiquement par Ableton). C'est un outil de réparation, pas pour s'enregistrer en direct.
 
 ---
 

@@ -30,4 +30,8 @@ set(TCHISKIBIDI_SHARED_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Shared)
 
 # --- Plugins of the suite -------------------------------------------------
 add_subdirectory(Plugins/Space)
+add_subdirectory(Plugins/Master)
+add_subdirectory(Plugins/Mix)
+add_subdirectory(Plugins/Vocal)
+add_subdirectory(Plugins/Clean)
 # Next ones: add_subdirectory(Plugins/Distortion), Plugins/Filter, ...
