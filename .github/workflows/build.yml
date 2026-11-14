@@ -2,7 +2,11 @@ name: Build Tchiskibidi plugins
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -10,10 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            name: Windows
           - os: macos-latest
             name: macOS
+          - os: windows-latest
+            name: Windows
 
     runs-on: ${{ matrix.os }}
 
@@ -30,23 +34,82 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel 4
 
-      - name: Collect plugins
-        run: |
-          mkdir -p dist
-          find build -type d -name "*.vst3" -path "*/Release/VST3/*" -prune -exec cp -R {} dist/ \;
-          find build -type d -name "*.component" -path "*/Release/AU/*" -prune -exec cp -R {} dist/ \;
-          find build -type d -name "*.app" -path "*/Release/Standalone/*" -prune -exec cp -R {} dist/ \;
-          find build -type f -name "*.exe" -path "*/Release/Standalone/*" -exec cp {} dist/ \;
-          ls -la dist
-
-      - name: Ad-hoc sign (macOS)
+      - name: Make macOS installer
         if: runner.os == 'macOS'
         run: |
-          for f in dist/*.vst3 dist/*.component dist/*.app; do
-            [ -e "$f" ] && codesign --force --deep -s - "$f"
+          set -e
+          mkdir -p pkgroot/vst3 pkgroot/au scripts dist
+          find build -type d -name "*.vst3" -path "*/Release/VST3/*" -prune -exec cp -R {} pkgroot/vst3/ \;
+          find build -type d -name "*.component" -path "*/Release/AU/*" -prune -exec cp -R {} pkgroot/au/ \;
+          for f in pkgroot/vst3/* pkgroot/au/*; do codesign --force --deep -s - "$f"; done
+
+          cat > scripts/postinstall <<'EOF'
+          #!/bin/bash
+          U=$(stat -f%Su /dev/console)
+          rm -rf "/Users/$U/Library/Audio/Plug-Ins/VST3/Tchiskibidi "* "/Users/$U/Library/Audio/Plug-Ins/Components/Tchiskibidi "*
+          xattr -cr /Library/Audio/Plug-Ins/VST3 /Library/Audio/Plug-Ins/Components 2>/dev/null
+          killall -9 AudioComponentRegistrar 2>/dev/null
+          exit 0
+          EOF
+          chmod +x scripts/postinstall
+
+          for kind in vst3 au; do
+            pkgbuild --analyze --root pkgroot/$kind $kind.plist
+            python3 -c "import plistlib,sys;p=sys.argv[1];d=plistlib.load(open(p,'rb'));[x.__setitem__('BundleIsRelocatable',False) for x in d];plistlib.dump(d,open(p,'wb'))" $kind.plist
           done
+          pkgbuild --root pkgroot/vst3 --component-plist vst3.plist --install-location /Library/Audio/Plug-Ins/VST3 \
+                   --identifier com.tchiskibidi.vst3 --version 1.0 vst3.pkg
+          pkgbuild --root pkgroot/au --component-plist au.plist --install-location /Library/Audio/Plug-Ins/Components \
+                   --identifier com.tchiskibidi.au --version 1.0 --scripts scripts au.pkg
+          productbuild --package vst3.pkg --package au.pkg dist/Tchiskibidi-Installer-macOS.pkg
+
+      - name: Make Windows installer
+        if: runner.os == 'Windows'
+        run: |
+          set -e
+          choco install innosetup -y --no-progress
+          mkdir -p win/vst3 dist
+          find build -type d -name "*.vst3" -path "*/Release/VST3/*" -prune -exec cp -R {} win/vst3/ \;
+          cat > installer.iss <<'EOF'
+          [Setup]
+          AppName=Tchiskibidi Suite
+          AppVersion=1.0
+          AppPublisher=Tchiskibidi
+          DefaultDirName={autopf}\Tchiskibidi
+          DisableDirPage=yes
+          DisableProgramGroupPage=yes
+          Uninstallable=no
+          PrivilegesRequired=admin
+          ArchitecturesInstallIn64BitMode=x64compatible
+          OutputDir=dist
+          OutputBaseFilename=Tchiskibidi-Installer-Windows
+          [Files]
+          Source: "win\vst3\*"; DestDir: "{commoncf64}\VST3"; Flags: ignoreversion recursesubdirs createallsubdirs
+          EOF
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" installer.iss
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Tchiskibidi-${{ matrix.name }}
+          name: installer-${{ matrix.name }}
           path: dist
+
+  release:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la out
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          sleep 3
+          gh release create latest out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Tchiskibidi Suite - derniere version" \
+            --notes "Mac : telecharge Tchiskibidi-Installer-macOS.pkg. Windows : telecharge Tchiskibidi-Installer-Windows.exe."
