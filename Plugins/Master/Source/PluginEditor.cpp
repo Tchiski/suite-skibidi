@@ -435,7 +435,7 @@ void MasterEditor::LoudnessGauge::paint (juce::Graphics& g)
     const float w = (float) getWidth(), h = (float) getHeight();
     const float cx = w * 0.5f, cy = h - 16.0f, R = 128.0f;
     constexpr float lo = -24.0f, hi = -4.0f;
-    auto ang = [] (float v) { return juce::degreesToRadians (-200.0f + (juce::jlimit (lo, hi, v) - lo) / (hi - lo) * 220.0f); };
+    auto ang = [&] (float v) { return juce::degreesToRadians (-200.0f + (juce::jlimit (lo, hi, v) - lo) / (hi - lo) * 220.0f); };
     auto pt = [&] (float a, float rad) { return juce::Point<float> (cx + std::cos (a) * rad, cy + std::sin (a) * rad); };
     auto arc = [&] (float v0, float v1, float rad)
     {
