@@ -46,7 +46,8 @@ private:
     juce::ScrollBar scroll { false };
     juce::OwnedArray<tchk::Chip> fxChips, zoomChips, densChips;
     juce::Slider amount, curve, mix;
-    tchk::Chip delB { "Effacer", coral }, sprinkleB { TK_FR ("☄ Saupoudrer"), coral }, followB { "Suivre la lecture", coral };
+    tchk::Chip delB { "Effacer", coral }, sprinkleB { TK_FR ("☄ Saupoudrer"), coral }, followB { "Suivre la lecture", coral }, magnetB { "Aimant : sur les coups", coral };
+    bool magnet = true;
     tchk::TransportBadge badge;
     juce::ComboBox presetBox;
     tchk::HeartButton heartButton;

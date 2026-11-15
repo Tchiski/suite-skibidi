@@ -3,7 +3,7 @@
 using tchk::LNF;
 using namespace twist;
 
-namespace { constexpr int kW = 880, kH = 600; const juce::Rectangle<int> tlArea { 20, 152, 840, 220 }; }
+namespace { constexpr int kW = 880, kH = 640; const juce::Rectangle<int> tlArea { 252, 100, 608, 262 }; constexpr int X0 = 252; }
 
 TwistEditor::TwistEditor (TwistProcessor& p)
     : tchk::ScaledEditor (p, kW, kH, 0.9f, "twist"), audioProcessor (p)
@@ -15,7 +15,7 @@ TwistEditor::TwistEditor (TwistProcessor& p)
 
     for (int i = 0; i < NumFx; ++i)
     {
-        auto* c = fxChips.add (new tchk::Chip (fxNames()[i], fxColour (i))); c->fontSize = 12.0f;
+        auto* c = fxChips.add (new tchk::Chip (fxNames()[i], fxColour (i))); c->fontSize = 11.0f;
         c->onClick = [this, i] { chosenFx = i; for (int k = 0; k < fxChips.size(); ++k) fxChips[k]->setToggleState (k == i, juce::dontSendNotification); };
         content.addAndMakeVisible (c);
     }
@@ -63,16 +63,19 @@ TwistEditor::TwistEditor (TwistProcessor& p)
     delB.onClick = [this] { if (selected >= 0 && selected < (int) zones.size()) { zones.erase (zones.begin() + selected); select (-1); commit(); } };
     sprinkleB.outline = true;
     sprinkleB.onClick = [this] { audioProcessor.sprinkle (density, juce::jmax (8, viewBars)); refreshFromState(); };
+    magnetB.setToggleState (true, juce::dontSendNotification); magnetB.fontSize = 11.0f;
+    magnetB.onClick = [this] { magnet = ! magnet; magnetB.setToggleState (magnet, juce::dontSendNotification); magnetB.setButtonText (magnet ? "Aimant : sur les coups" : "Aimant : sur la grille"); };
+    followB.fontSize = 11.0f;
     followB.setToggleState (true, juce::dontSendNotification);
     followB.onClick = [this] { followB.setToggleState (! followB.getToggleState(), juce::dontSendNotification); };
     badge.isPlaying = [this] { return audioProcessor.playing.load(); };
     presets = std::make_unique<tchk::PresetSystem> (p, "Twist", presetBox, heartButton, nullptr, nullptr, TK_FR ("♥ MES TWISTS"), "Mes twists");
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &timeline, &scroll, &delB, &sprinkleB, &followB, &badge, &presetBox, &heartButton })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &timeline, &scroll, &delB, &sprinkleB, &followB, &magnetB, &badge, &presetBox, &heartButton })
         content.addAndMakeVisible (c);
     layout();
-    addInfo (96, 62, TK_FR ("Choisis un effet, puis glisse sur la timeline.||Mets Twist sur ta piste instru (ou le master). Tu poses des effets à des moments précis : un tape stop avant le refrain, une coupure sur le dernier temps, un filtre qui monte...|POSER : clique un effet, puis glisse sur la timeline à l'endroit voulu.|MODIFIER : clique une zone, règle-la en bas, tire son bord droit pour l'allonger, glisse-la pour la déplacer.|EFFACER : sélectionne la zone et clique Effacer (ou Suppr).|Tout est calé sur les mesures d'Ableton : chaque effet se déclenche pile au bon moment, à chaque lecture et dans l'export (bounce)."), "Twist");
-    addInfo (230, 532, TK_FR ("Twist place des effets tout seul.||Il pose de petits effets aux bons endroits : fins de phrases de 4 et 8 mesures, avant les changements de partie (tape stop, coupure, filtre, stutter...). Reclique pour d'autres idées.|L'image du morceau (la forme d'onde) se dessine pendant que tu le joues."), "Saupoudrer");
+    addInfo (88, 62, TK_FR ("Choisis un effet, puis glisse sur la timeline.||25 effets fous en 4 familles : TEMPS (tape stop, bullet time, disque rayé...), HACHAGE (rafale, hoquet, bug 8-bit...), VOIX FOLLES (hélium, démon, ascenseur...), ESPACE FOU (toupie, trou noir, fantôme...).|AIMANT : les petits triangles sur la timeline sont les coups du morceau (kick, snare...), repérés pendant la lecture. Les zones se collent dessus.|Mets Twist sur ta piste instru (ou le master). Tu poses des effets à des moments précis : un tape stop avant le refrain, une coupure sur le dernier temps, un filtre qui monte...|POSER : clique un effet, puis glisse sur la timeline à l'endroit voulu.|MODIFIER : clique une zone, règle-la en bas, tire son bord droit pour l'allonger, glisse-la pour la déplacer.|EFFACER : sélectionne la zone et clique Effacer (ou Suppr).|Tout est calé sur les mesures d'Ableton : chaque effet se déclenche pile au bon moment, à chaque lecture et dans l'export (bounce)."), "Twist");
+    addInfo (X0 + 140, 66, TK_FR ("Twist place des effets tout seul.||Il pose de petits effets aux bons endroits : fins de phrases de 4 et 8 mesures, avant les changements de partie (tape stop, coupure, filtre, stutter...). Reclique pour d'autres idées.|L'image du morceau (la forme d'onde) se dessine pendant que tu le joues."), "Saupoudrer");
     finishSetup (71, { { 260, 14, 40 }, { 340, 30, 28 }, { 560, 12, 34 } });
     refreshFromState();
     select (-1);
@@ -83,56 +86,72 @@ TwistEditor::~TwistEditor() { stopTimer(); scroll.removeListener (this); }
 
 void TwistEditor::layout()
 {
-    int x = 20, y = 84;
+    // left column: the effects by family, two per row
+    int y = 84, col = 0, fam = 0;
     for (int i = 0; i < fxChips.size(); ++i)
     {
-        const int w = 30 + (int) (7.2f * (float) fxChips[i]->getButtonText().length());
-        if (x + w > 860) { x = 20; y += 34; }
-        fxChips[i]->setBounds (x, y, w, 30); x += w + 6;
+        if (fam < (int) families().size() && families()[(size_t) fam].first == i) { if (col == 1) y += 30; y += (fam == 0 ? 0 : 6) + 16; col = 0; ++fam; }
+        fxChips[i]->setBounds (18 + col * 112, y, 108, 26);
+        if (++col == 2) { col = 0; y += 30; }
     }
+    sprinkleB.setBounds (X0, 58, 130, 32);
+    for (int i = 0; i < 3; ++i) densChips[i]->setBounds (X0 + 164 + i * 58, 60, 54, 28);
+    magnetB.setBounds (700, 60, 160, 28);
     timeline.setBounds (tlArea);
     scroll.setBounds (tlArea.getX() + 8, tlArea.getBottom() + 4, tlArea.getWidth() - 16, 10);
-    for (int i = 0; i < zoomChips.size(); ++i) zoomChips[i]->setBounds (610 + i * 44, 58, 40, 24);
-    followB.setBounds (440, 58, 150, 24);
-    amount.setBounds (430, 410, 90, 90); curve.setBounds (530, 410, 90, 90); mix.setBounds (630, 410, 90, 90);
-    delB.setBounds (740, 440, 100, 30);
-    badge.setBounds (20, 524, 190, 38);
-    sprinkleB.setBounds (256, 526, 130, 34);
-    for (int i = 0; i < 3; ++i) densChips[i]->setBounds (392 + i * 66, 528, 62, 30);
-    heartButton.setBounds (630, 530, 26, 26);
-    presetBox.setBounds (662, 530, 198, 26);
+    for (int i = 0; i < zoomChips.size(); ++i) zoomChips[i]->setBounds (X0 + 320 + i * 42, 384, 38, 22);
+    followB.setBounds (X0 + 470, 382, 138, 24);
+    amount.setBounds (X0 + 330, 446, 86, 86); curve.setBounds (X0 + 420, 446, 86, 86); mix.setBounds (X0 + 510, 446, 86, 86);
+    delB.setBounds (X0 + 16, 540, 90, 26);
+    badge.setBounds (X0, 590, 190, 38);
+    heartButton.setBounds (X0 + 376, 596, 26, 26);
+    presetBox.setBounds (X0 + 408, 596, 200, 26);
 }
 
 void TwistEditor::paintContent (juce::Graphics& g)
 {
     paintBackgroundAndHeader (g, "Twist", {});
     g.setColour (LNF::textDim); g.setFont (LNF::font (12.0f));
-    g.drawText ("EFFETS", 20, 62, 80, 18, juce::Justification::centredLeft);
-    g.setFont (LNF::font (10.5f));
-    g.drawText ("MESURES", 610 - 64, 61, 60, 18, juce::Justification::centredRight);
-    drawPanelT (g, { 20, 392, 840, 122 }, coral);
+    g.drawText ("EFFETS", 18, 62, 70, 18, juce::Justification::centredLeft);
+    for (auto& [first, name] : families())
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (LNF::font (9.5f));
+        g.drawText (name, 18, fxChips[first]->getY() - 16, 200, 14, juce::Justification::centredLeft);
+    }
     g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
-    g.drawText (TK_FR ("INTENSITÉ"), 430, 398, 90, 14, juce::Justification::centred);
-    g.drawText ("COURBE", 530, 398, 90, 14, juce::Justification::centred);
-    g.drawText ("MIX", 630, 398, 90, 14, juce::Justification::centred);
+    g.drawText ("MESURES", X0 + 250, 387, 66, 16, juce::Justification::centredRight);
+    drawPanelT (g, { X0, 414, 608, 164 }, coral);
+    g.drawText (TK_FR ("INTENSITÉ"), X0 + 330, 432, 86, 14, juce::Justification::centred);
+    g.drawText ("COURBE", X0 + 420, 432, 86, 14, juce::Justification::centred);
+    g.drawText ("MIX", X0 + 510, 432, 86, 14, juce::Justification::centred);
 }
 
 void TwistEditor::overContent (juce::Graphics& g)
 {
+    const juce::Rectangle<float> badgeR ((float) X0 + 16, 430, 60, 60);
     if (selected < 0 || selected >= (int) zones.size())
     {
-        g.setColour (LNF::textDim); g.setFont (LNF::font (15.0f));
-        g.drawText (TK_FR ("Aucune zone choisie"), 38, 404, 360, 22, juce::Justification::centredLeft);
+        g.setColour (juce::Colours::white.withAlpha (0.08f)); g.fillEllipse (badgeR);
+        g.setColour (LNF::textDim); g.setFont (LNF::font (24.0f)); g.drawText ("?", badgeR, juce::Justification::centred);
+        g.setFont (LNF::font (15.0f));
+        g.drawText (TK_FR ("Aucune zone choisie"), X0 + 90, 430, 230, 22, juce::Justification::centredLeft);
         g.setFont (LNF::font (11.5f, false));
-        g.drawFittedText (TK_FR ("Clique une zone sur la timeline pour la régler, ou glisse pour en poser une nouvelle."), 38, 430, 360, 40, juce::Justification::topLeft, 3);
+        g.drawFittedText (TK_FR ("Clique une zone sur la timeline pour la régler, ou glisse pour en poser une nouvelle."), X0 + 90, 456, 230, 50, juce::Justification::topLeft, 3);
         return;
     }
     const auto& z = zones[(size_t) selected];
-    g.setColour (fxColour (z.fx)); g.setFont (LNF::font (15.0f));
+    const auto c = fxColour (z.fx);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white, badgeR.getX() + 18, badgeR.getY() + 16, c, badgeR.getRight(), badgeR.getBottom(), true));
+    g.fillEllipse (badgeR);
+    g.setColour (juce::Colour (0xff14081f)); g.setFont (LNF::font (24.0f));
+    g.drawText (fxNames()[z.fx].substring (0, 1), badgeR, juce::Justification::centred);
+    g.setColour (c); g.setFont (LNF::font (16.0f));
+    g.drawText (fxNames()[z.fx], X0 + 90, 428, 230, 22, juce::Justification::centredLeft);
     const int bar = (int) (z.start / 4.0) + 1; const double bt = std::fmod (z.start, 4.0) + 1.0;
-    g.drawText (fxNames()[z.fx] + TK_FR (" · mesure ") + juce::String (bar) + ", temps " + juce::String (bt, bt == std::floor (bt) ? 0 : 1), 38, 404, 380, 22, juce::Justification::centredLeft);
-    g.setColour (LNF::textDim); g.setFont (LNF::font (11.5f, false));
-    g.drawFittedText (fxHelp()[z.fx] + "\n" + TK_FR ("COURBE : effet progressif (à gauche) ou qui arrive d'un coup à la fin (à droite)."), 38, 430, 370, 60, juce::Justification::topLeft, 4);
+    g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
+    g.drawText (TK_FR ("mesure ") + juce::String (bar) + ", temps " + juce::String (bt, bt == std::floor (bt) ? 0 : 2) + " · " + juce::String (z.end - z.start, 2) + " temps", X0 + 90, 450, 230, 16, juce::Justification::centredLeft);
+    g.setFont (LNF::font (11.5f, false));
+    g.drawFittedText (fxHelp()[z.fx], X0 + 90, 470, 230, 50, juce::Justification::topLeft, 3);
 }
 
 void TwistEditor::refreshFromState()
@@ -185,7 +204,16 @@ void TwistEditor::timerCallback()
 double TwistEditor::Timeline::beatAt (float x) const
 {
     const double b = ed.viewStart + (double) (x - 8.0f) / (double) (getWidth() - 16) * ed.viewBars * 4.0;
-    return juce::jmax (0.0, std::round (b * 4.0) / 4.0);   // snap to a 16th
+    const double grid = juce::jmax (0.0, std::round (b * 4.0) / 4.0);   // a 16th
+    if (! ed.magnet) return grid;
+    const int c = (int) std::round (b * 4.0);
+    for (int d = 0; d <= 2; ++d)   // nearest hit within half a beat
+        for (int sgn : { -1, 1 })
+        {
+            const int k = c + sgn * d;
+            if (k >= 0 && k < TwistProcessor::thumbLen && ed.audioProcessor.hits[(size_t) k].load()) return k / 4.0;
+        }
+    return grid;
 }
 float TwistEditor::Timeline::xOf (double beat) const { return 8.0f + (float) ((beat - ed.viewStart) / (ed.viewBars * 4.0)) * (float) (getWidth() - 16); }
 juce::Rectangle<float> TwistEditor::Timeline::zoneRect (const Zone& z) const
@@ -227,6 +255,16 @@ void TwistEditor::Timeline::paint (juce::Graphics& g)
         if (v <= 0.001f) continue;
         const float x = xOf (ed.viewStart + q * 0.25);
         g.fillRect (x, mid - v * amp, juce::jmax (1.0f, (float) (getWidth() - 16) / (float) (beats * 4) - 1.0f), v * amp * 2.0f);
+    }
+    // the hits (transients) found while playing: little triangles
+    g.setColour (juce::Colours::white.withAlpha (0.55f));
+    for (int q = 0; q < beats * 4; ++q)
+    {
+        const int idx = (int) (ed.viewStart * 4.0) + q;
+        if (idx < 0 || idx >= TwistProcessor::thumbLen) break;
+        if (! ed.audioProcessor.hits[(size_t) idx].load()) continue;
+        const float x = xOf (ed.viewStart + q * 0.25);
+        juce::Path tri; tri.addTriangle (x - 4.0f, 24.0f, x + 4.0f, 24.0f, x, 30.0f); g.fillPath (tri);
     }
     if (ed.audioProcessor.thumb[(size_t) juce::jlimit (0, TwistProcessor::thumbLen - 1, (int) (ed.viewStart * 4.0) + 2)].load() <= 0.0f)
     {

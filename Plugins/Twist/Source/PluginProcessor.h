@@ -9,25 +9,46 @@
 // stutter, reverse, filter sweeps, cut, echo throw, vinyl, pump, lo-fi), triggered by the host position.
 namespace twist
 {
-    enum Fx { TapeStop, TapeStart, Slow, Stutter, Reverse, FilterDown, FilterUp, Cut, Echo, Vinyl, Pump, LoFi, NumFx };
+    enum Fx { TapeStop, TapeStart, BulletTime, Rewind, Scratch, Skip, Accordion, Freeze, Reverse,
+              Roll, Stutter, Hiccup, Glitch, Bug8,
+              Helium, Demon, Robot, Elevator, Arp, PitchDrop,
+              Spin, BlackHole, Ghost, Aquarium, Radio, NumFx };
     inline const juce::StringArray& fxNames()
     {
-        static const juce::StringArray n { "Tape stop", "Tape start", "Ralenti", "Stutter", "Reverse", TK_FR ("Filtre ↓"), TK_FR ("Filtre ↑"), "Coupure", TK_FR ("Écho"), "Vinyle", "Pompe", "Lo-fi" };
+        static const juce::StringArray n { "Tape stop", "Tape start", "Bullet time", "Rewind", "Scratch", TK_FR ("Disque rayé"), TK_FR ("Accordéon"), "Freeze", "Reverse",
+                                           "Rafale", "Stutter", "Hoquet", "Glitch", "Bug 8-bit",
+                                           TK_FR ("Hélium"), TK_FR ("Démon"), "Robot", "Ascenseur", TK_FR ("Arpège fou"), "Pitch chute",
+                                           "Toupie", "Trou noir", TK_FR ("Fantôme"), "Aquarium", "Station radio" };
         return n;
+    }
+    // families: first effect of each family, and its name
+    inline const std::vector<std::pair<int, juce::String>>& families()
+    {
+        static const std::vector<std::pair<int, juce::String>> f { { TapeStop, "TEMPS" }, { Roll, "HACHAGE" }, { Helium, "VOIX FOLLES" }, { Spin, "ESPACE FOU" } };
+        return f;
     }
     inline juce::Colour fxColour (int i)
     {
-        static const juce::uint32 c[] = { 0xffff5f4d, 0xffffa94d, 0xffffd34d, 0xffc6ff3d, 0xff3dffc8, 0xff3dc8ff, 0xff7d8cff, 0xffb48cff, 0xffff8ad8, 0xffffb38a, 0xffff6b9e, 0xffd8d4e8 };
+        static const juce::uint32 c[] = { 0xffff5f4d, 0xffff7d4d, 0xffff9a4d, 0xffffb84d, 0xffffd34d, 0xffffe14d, 0xfffff08a, 0xffe8ff6b, 0xffc6ff3d,
+                                          0xff8dff5d, 0xff5dff7a, 0xff5dff9a, 0xff3dffc8, 0xff3de8ff,
+                                          0xff3dc8ff, 0xff5d8cff, 0xff7d7dff, 0xff9a7dff, 0xffb48cff, 0xffd08bff,
+                                          0xffff8ad8, 0xffff6b9e, 0xffffb3d9, 0xff7fe0ff, 0xffffd2a0 };
         return juce::Colour (c[juce::jlimit (0, NumFx - 1, i)]);
     }
     inline const juce::StringArray& fxHelp()
     {
         static const juce::StringArray h {
-            TK_FR ("Le son ralentit jusqu'à l'arrêt, comme une cassette qu'on coupe."), TK_FR ("L'inverse : le son repart en accélérant."),
-            TK_FR ("Tout passe au ralenti, plus grave."), TK_FR ("Répète un petit morceau en rafale (bégaiement)."), TK_FR ("Joue à l'envers ce qui vient de passer."),
-            TK_FR ("Le son devient étouffé, comme sous l'eau."), TK_FR ("On enlève les basses : effet de montée avant un drop."), TK_FR ("Silence net : le drop qui fait respirer."),
-            TK_FR ("La fin du passage part en écho."), TK_FR ("Le son ondule et grésille un peu, comme un vieux disque."), TK_FR ("Le son respire à chaque temps, comme un sidechain."),
-            TK_FR ("Son plus petit et granuleux.") };
+            TK_FR ("Le son ralentit jusqu'à l'arrêt, comme une cassette qu'on coupe."), TK_FR ("Le son repart en accélérant, comme un vieux moteur."),
+            TK_FR ("Ralenti façon Matrix : tout se fige presque... puis repart d'un coup."), TK_FR ("Le DJ rembobine le disque en arrière."),
+            TK_FR ("Allers-retours de platine sur le son."), TK_FR ("Le disque saute et répète le même bout, comme un CD abîmé."),
+            TK_FR ("La vitesse s'étire et se compresse comme un accordéon."), TK_FR ("Le son se fige sur un instant et bourdonne."), TK_FR ("Joue à l'envers ce qui vient de passer."),
+            TK_FR ("Une rafale qui accélère : 1/4, 1/8, 1/16, 1/32... le roulement avant le drop."), TK_FR ("Répète un petit morceau en boucle, b-b-b-bégaiement."),
+            TK_FR ("Le son a le hoquet : des trous au hasard."), TK_FR ("Sauts au hasard dans le son, façon bug."), TK_FR ("Ta prod plante comme une vieille console de jeu."),
+            TK_FR ("Tout passe dans les aigus, voix de souris (le tempo ne bouge pas)."), TK_FR ("Tout descend dans le grave, voix de monstre (le tempo ne bouge pas)."),
+            TK_FR ("Son métallique de robot."), TK_FR ("Le son monte marche par marche, demi-ton par demi-ton."), TK_FR ("Chaque petit bout saute d'octave au hasard."),
+            TK_FR ("Le son tombe vers le grave, comme une batterie à plat."),
+            TK_FR ("Le son tourne autour de ta tête de plus en plus vite."), TK_FR ("Le son est aspiré : il ralentit, s'assombrit et disparaît."),
+            TK_FR ("Un souffle à l'envers qui arrive juste avant le coup."), TK_FR ("Le son plonge sous l'eau avec des bulles."), TK_FR ("Comme quand on tourne le bouton d'une vieille radio.") };
         return h;
     }
     struct Zone { int fx = 0; double start = 0, end = 1; float amount = 0.8f, curve = 0.5f, mix = 1.0f; }; // positions in beats from the song start
@@ -90,6 +111,7 @@ public:
     // a picture of the song built while it plays: level per quarter of a beat, for 128 bars
     static constexpr int thumbLen = 128 * 16;
     std::array<std::atomic<float>, thumbLen> thumb;
+    std::array<std::atomic<bool>, thumbLen> hits;   // the song's hits (transients), per 16th
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -108,11 +130,15 @@ private:
     float xfade = 1.0f; bool jumping = false;
     // filters, echo, vinyl
     juce::dsp::StateVariableTPTFilter<float> lp, hp;
-    juce::AudioBuffer<float> echoBuf; int echoPos = 0; float echoFb = 0;
     double vinylPh = 0; float crush[2] {}; int crushCount = 0;
     juce::Random rng;
-    juce::SmoothedValue<float> gainS, lpS, hpS;
     juce::AudioBuffer<float> dry;
+    // per-zone helpers
+    int lastStep = -1; double stepStartWrite = 0, stepJump = 0, stepRate = 1; bool stepMute = false; float gateG = 1.0f;
+    double grainPh = 0; float ringPh = 0, panPh = 0;
+    juce::Reverb ghostVerb;
+    float envFast = 0, envSlow = 0; double lastHitBeat = -10;
+    float pitchShift (int ch, double wAbs, double ratio);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TwistProcessor)
 };
