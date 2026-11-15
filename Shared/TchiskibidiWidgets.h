@@ -474,6 +474,17 @@ protected:
     {
         sky.setup (baseW, baseH, theme, seed, std::move (eyes));
         gear.setBounds (gearBounds);
+        // never steal the keyboard from the host (Ableton's computer keyboard must keep playing notes)
+        std::function<void (juce::Component&)> noFocus = [&noFocus] (juce::Component& c)
+        {
+            for (auto* ch : c.getChildren())
+            {
+                if (! (bool) ch->getProperties()["keepFocus"]) { ch->setWantsKeyboardFocus (false); ch->setMouseClickGrabsKeyboardFocus (false); }
+                noFocus (*ch);
+            }
+        };
+        noFocus (content);
+        setWantsKeyboardFocus (false);
         for (auto* i : infoIcons) i->toFront (false);
         gear.toFront (false);
         applySettings();

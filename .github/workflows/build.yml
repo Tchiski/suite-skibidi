@@ -49,6 +49,8 @@ jobs:
           # Remove old manual copies from the user's Library, unblock, refresh AU cache
           U=$(stat -f%Su /dev/console)
           rm -rf "/Users/$U/Library/Audio/Plug-Ins/VST3/Tchiskibidi "* "/Users/$U/Library/Audio/Plug-Ins/Components/Tchiskibidi "*
+          # Accords is VST3 only (its MIDI output must reach other tracks in Ableton): remove the old AU
+          rm -rf "/Library/Audio/Plug-Ins/Components/Tchiskibidi Accords.component"
           xattr -cr /Library/Audio/Plug-Ins/VST3 /Library/Audio/Plug-Ins/Components 2>/dev/null
           killall -9 AudioComponentRegistrar 2>/dev/null
           exit 0

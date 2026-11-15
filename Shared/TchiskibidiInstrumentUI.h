@@ -98,7 +98,7 @@ public:
     std::function<std::vector<std::tuple<int, int, juce::String>>()> getLabels; // start, length, text
     std::function<double()> getPlayStep;
 
-    PianoRoll() { setWantsKeyboardFocus (true); }
+    PianoRoll() { setWantsKeyboardFocus (true); getProperties().set ("keepFocus", true); }
 
     void fit()
     {
@@ -227,7 +227,8 @@ public:
         if (lasso)
         {
             lasso = false;
-            if (! drag.moved && e.y >= head && e.x >= gut)   // simple click in the void: add a note
+            if (drag.moved) { drag.active = false; if (sel.empty()) giveAwayKeyboardFocus(); repaint(); return; }
+            if (e.y >= head && e.x >= gut)   // simple click in the void: add a note
             {
                 SeqNote n; n.start = juce::jlimit (0, totalSteps - 1, (stepAt (e.x) / gridSnap) * gridSnap); n.pitch = pitchAt (e.y);
                 n.length = juce::jmin (newLength, totalSteps - n.start);
@@ -284,8 +285,13 @@ private:
     }
     void changed()
     {
-        std::sort (notes.begin(), notes.end(), [] (const SeqNote& a, const SeqNote& b) { return a.start < b.start || (a.start == b.start && a.pitch < b.pitch); });
-        sel.clear();
+        // sort the notes but keep the selection on the same notes
+        std::vector<std::pair<SeqNote, bool>> tmp;
+        for (size_t i = 0; i < notes.size(); ++i) tmp.push_back ({ notes[i], sel.count ((int) i) > 0 });
+        std::stable_sort (tmp.begin(), tmp.end(), [] (const auto& a, const auto& b) { return a.first.start < b.first.start || (a.first.start == b.first.start && a.first.pitch < b.first.pitch); });
+        notes.clear(); sel.clear();
+        for (size_t i = 0; i < tmp.size(); ++i) { notes.push_back (tmp[i].first); if (tmp[i].second) sel.insert ((int) i); }
+        if (sel.empty()) giveAwayKeyboardFocus();   // hand the keyboard back to the host (computer keyboard = notes)
         repaint();
         if (onEdit) onEdit();
     }
