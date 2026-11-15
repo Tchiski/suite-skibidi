@@ -9,6 +9,7 @@ AccordsProcessor::AccordsProcessor()
     apvts.state.setProperty ("bars", 4, nullptr);
     apvts.state.setProperty ("mood", 0, nullptr);
     apvts.state.setProperty ("seventh", 0, nullptr);
+    synth.outputGain = 0.4f;   // 3 or 4 notes at once: keep headroom
     generate();
 }
 

@@ -126,6 +126,8 @@ struct Patch
     float space = 0.15f, width = 0.5f, glide = 0, level = 0.7f, click = 0;
     bool mono = false;
     float octave = 0;
+    float vowel = -1.0f;   // >= 0: choir voice (0 a, 1 o, 2 ou, 3 é, 4 i), formant filters instead of the low-pass
+    float chorus = 0.0f;   // soft stereo chorus
 };
 
 // Simple TPT state-variable low-pass (stable when modulated)
@@ -140,7 +142,24 @@ struct SVF
         ic1 = 2.0f * v1 - ic1; ic2 = 2.0f * v2 - ic2;
         return v2;
     }
+    float bandpass (float x, float g, float k)
+    {
+        const float a1 = 1.0f / (1.0f + g * (g + k)), a2 = g * a1, a3 = g * a2;
+        const float v3 = x - ic2, v1 = a1 * ic1 + a2 * v3, v2 = ic2 + a2 * ic1 + a3 * v3;
+        ic1 = 2.0f * v1 - ic1; ic2 = 2.0f * v2 - ic2;
+        return v1;
+    }
 };
+
+// vowel formants (Hz) and their levels, interpolated between a, o, ou, é, i
+inline void formants (float vowel, float* f, float* gn)
+{
+    static const float tab[5][3] = { { 800, 1150, 2900 }, { 450, 800, 2830 }, { 325, 700, 2700 }, { 400, 1700, 2600 }, { 300, 2100, 3000 } };
+    static const float lv[5][3] = { { 1.0f, 0.5f, 0.12f }, { 1.0f, 0.35f, 0.08f }, { 1.0f, 0.2f, 0.05f }, { 1.0f, 0.3f, 0.12f }, { 1.0f, 0.25f, 0.1f } };
+    const float v = juce::jlimit (0.0f, 3.999f, vowel);
+    const int i = (int) v; const float t = v - (float) i;
+    for (int k = 0; k < 3; ++k) { f[k] = tab[i][k] + (tab[i + 1][k] - tab[i][k]) * t; gn[k] = lv[i][k] + (lv[i + 1][k] - lv[i][k]) * t; }
+}
 
 struct Env
 {
@@ -183,7 +202,7 @@ public:
         current = (fromMidi >= 0 && p.glide > 0.0005f) ? fromMidi + p.octave * 12.0f : target;
         if (! legato || ! active())
         {
-            if (! active() || amp.v < 0.01f) { for (auto& ph : phase) ph = juce::Random::getSystemRandom().nextFloat(); fl.reset(); fr.reset(); }
+            if (! active() || amp.v < 0.01f) { for (auto& ph : phase) ph = juce::Random::getSystemRandom().nextFloat(); fl.reset(); fr.reset(); for (auto& b : fb) b.reset(); }
             amp.on(); fil.on(); pitchEnvV = 1.0f; clickV = 1.0f;
         }
         else if (amp.stage == Env::Rel || amp.stage == Env::Dec || amp.stage == Env::Sus)
@@ -240,7 +259,25 @@ public:
                 const float cutoff = juce::jlimit (30.0f, sr * 0.45f, p.cutoff * std::exp2 (p.fenv * fe + (p.lfoFilter > 0 ? p.lfoFilter * std::sin (lfo * 0.5f) : 0.0f)) * (0.6f + 0.4f * velocity));
                 g = std::tan (juce::MathConstants<float>::pi * cutoff / sr);
             }
-            float yl = fl.process (sl, g, k), yr = fr.process (sr2, g, k);
+            float yl, yr;
+            if (p.vowel >= 0.0f)
+            {
+                if ((i & 31) == 0)
+                {
+                    float f[3], gn[3];
+                    formants (p.vowel + 0.15f * std::sin (lfo * 0.21f), f, gn);
+                    for (int q = 0; q < 3; ++q) { fbG[(size_t) q] = std::tan (juce::MathConstants<float>::pi * juce::jmin (f[q], sr * 0.45f) / sr); fbGain[(size_t) q] = gn[q]; }
+                }
+                const float kq = 0.12f;
+                yl = 0; yr = 0;
+                for (int q = 0; q < 3; ++q)
+                {
+                    yl += fbGain[(size_t) q] * kq * 2.5f * fb[(size_t) q].bandpass (sl, fbG[(size_t) q], kq);
+                    yr += fbGain[(size_t) q] * kq * 2.5f * fb[(size_t) (q + 3)].bandpass (sr2, fbG[(size_t) q], kq);
+                }
+                yl = fl.process (yl * 0.9f, g, k); yr = fr.process (yr * 0.9f, g, k);
+            }
+            else { yl = fl.process (sl, g, k); yr = fr.process (sr2, g, k); }
             if (p.drive > 0.01f) { const float d = 1.0f + p.drive * 8.0f, nd = 1.0f / std::tanh (d); yl = std::tanh (yl * d) * nd; yr = std::tanh (yr * d) * nd; }
             const float a = amp.next (p.A, p.D, p.S, p.R, sr) * velocity * p.level;
             float cl = 0;
@@ -255,6 +292,8 @@ private:
     std::array<float, 7> phase {};
     Env amp, fil;
     SVF fl, fr;
+    std::array<SVF, 6> fb;
+    std::array<float, 3> fbG {}, fbGain {};
     juce::Random rng;
 };
 
@@ -264,6 +303,7 @@ class SynthEngine
 public:
     static constexpr int numVoices = 16;
     Patch patch;
+    float outputGain = 1.0f;   // overall level before the soft limiter (polyphonic pads need headroom)
 
     void prepare (double sampleRate, int maxBlock)
     {
@@ -328,18 +368,50 @@ public:
         lfoPhase = std::fmod (lfoPhase + lfoInc * (float) n, juce::MathConstants<float>::twoPi * 2.0f);
         juce::Reverb::Parameters rp; rp.roomSize = 0.55f + 0.4f * patch.space; rp.damping = 0.5f; rp.wetLevel = patch.space * 0.55f; rp.dryLevel = 1.0f - patch.space * 0.25f; rp.width = 1.0f;
         reverb.setParameters (rp);
+        if (patch.chorus > 0.01f) applyChorus (n);
         if (any || patch.space > 0.01f) reverb.processStereo (tmpL.data(), tmpR.data(), n);
         auto* L = buf.getWritePointer (0, start);
         auto* R = buf.getNumChannels() > 1 ? buf.getWritePointer (1, start) : nullptr;
         for (int i = 0; i < n; ++i)
         {
-            L[i] += std::tanh (tmpL[(size_t) i] * 0.9f);
-            if (R != nullptr) R[i] += std::tanh (tmpR[(size_t) i] * 0.9f);
+            L[i] += softClip (tmpL[(size_t) i] * outputGain);
+            if (R != nullptr) R[i] += softClip (tmpR[(size_t) i] * outputGain);
         }
     }
     bool anyActive() const { for (auto& v : voices) if (v.active()) return true; return false; }
 
 private:
+    // clean below 0.6, then a gentle knee (no fizz on normal levels)
+    static float softClip (float x)
+    {
+        const float a = std::abs (x);
+        if (a < 0.6f) return x;
+        const float y = 0.6f + 0.4f * std::tanh ((a - 0.6f) / 0.4f);
+        return x < 0 ? -y : y;
+    }
+    void applyChorus (int n)
+    {
+        if (chL.empty()) { chL.assign (4096, 0.0f); chR.assign (4096, 0.0f); }
+        const float depth = 0.0025f * sr, base = 0.012f * sr, mix = juce::jlimit (0.0f, 0.6f, patch.chorus * 0.6f);
+        const float inc = juce::MathConstants<float>::twoPi * 0.35f / sr;
+        for (int i = 0; i < n; ++i)
+        {
+            chL[(size_t) chW] = tmpL[(size_t) i]; chR[(size_t) chW] = tmpR[(size_t) i];
+            auto read = [&] (const std::vector<float>& b, float d)
+            {
+                float pos = (float) chW - d; while (pos < 0) pos += 4096.0f;
+                const int i0 = (int) pos; const float fr = pos - (float) i0;
+                return b[(size_t) i0] + (b[(size_t) ((i0 + 1) & 4095)] - b[(size_t) i0]) * fr;
+            };
+            const float dl = base + depth * std::sin (chPh), dr = base + depth * std::sin (chPh + 1.9f);
+            const float wl = read (chL, dl), wr = read (chR, dr);
+            tmpL[(size_t) i] = tmpL[(size_t) i] * (1.0f - mix * 0.5f) + wr * mix;
+            tmpR[(size_t) i] = tmpR[(size_t) i] * (1.0f - mix * 0.5f) + wl * mix;
+            chW = (chW + 1) & 4095; chPh += inc; if (chPh > juce::MathConstants<float>::twoPi) chPh -= juce::MathConstants<float>::twoPi;
+        }
+    }
+    std::vector<float> chL, chR;
+    int chW = 0; float chPh = 0;
     std::array<Voice, numVoices> voices;
     juce::Reverb reverb;
     std::vector<float> tmpL, tmpR;

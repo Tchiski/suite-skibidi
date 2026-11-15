@@ -21,6 +21,7 @@ float SynthProcessor::neutral (const juce::String& id)
 SynthProcessor::SynthProcessor() : tchk::InstrumentProcessor (false), apvts (*this, nullptr, "SynthState", createLayout())
 {
     apvts.state.setProperty ("bars", 4, nullptr);
+    synth.outputGain = 0.32f;   // several notes of a wide pad must stay clean (no fizz)
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SynthProcessor::createLayout()
@@ -62,7 +63,6 @@ tchk::Patch SynthProcessor::currentPatch()
     t.warmth = v ("warmth"); t.vibrato = v ("vibrato"); t.glide = v ("glide"); t.filterEnv = v ("filter"); t.reso = v ("reso"); t.detune = v ("detune");
     t.octave = (int) v ("octave"); t.mono = v ("mono") > 0.5f; t.volume = v ("volume");
     auto patch = tchk::sounds::applyTweaks (cached, t);
-    patch.level *= 2.0f;
     return patch;
 }
 

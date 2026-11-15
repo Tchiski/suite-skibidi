@@ -15,7 +15,6 @@ private:
     void paintContent (juce::Graphics& g);
     void overContent (juce::Graphics& g);
     void layout();
-    void showCategory (int cat);
     void refreshPresetUI();
     void roll();      // HASARD
     void undo();
@@ -25,17 +24,27 @@ private:
 
     SynthProcessor& audioProcessor;
     const juce::Colour orange { 0xffff8a3d };
-    tchk::Wheel catWheel;
-    juce::OwnedArray<tchk::Chip> presetChips, octChips;
+    // the big sphere: name of the sound, click = list of all the sounds of the family
+    struct Orb : public juce::Component
+    {
+        juce::Colour accent, accent2;
+        juce::String family, name;
+        int cat = 0;
+        std::function<void()> onClick;
+        void paint (juce::Graphics& g) override;
+        void mouseDown (const juce::MouseEvent&) override { if (onClick) onClick(); }
+    };
+    Orb orb;
+    void openList();
+    juce::OwnedArray<tchk::Chip> catChips, octChips;
     tchk::Chip prevB { juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x80")), orange }, nextB { juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6")), orange };
     tchk::Chip monoB { "Mono", orange }, demoB { TK_FR ("▶ Écouter le preset"), orange }, backB { TK_FR ("↶ Revenir"), orange };
-    juce::OwnedArray<tchk::Knob> macros, fine;
+    juce::OwnedArray<tchk::Knob> knobs;
     tchk::Knob volume;
     tchk::Comet comet;
     juce::ComboBox presetBox;
     tchk::HeartButton heartButton;
     std::unique_ptr<tchk::PresetSystem> presets;
-    int shownCat = -1;
     std::vector<std::vector<float>> history;
     std::vector<float> animFrom, animTo; double animStart = -1;
     int lastPreset = -1;
