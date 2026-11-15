@@ -48,6 +48,17 @@ public:
         slider.setBounds (r);
     }
 
+    // planet with a sun orbiting around it (dry/wet, mix)
+    Knob& asOrbit() { slider.getProperties().set ("tk", "orbit"); return *this; }
+    // rocket fader (volumes): vertical slider, the rocket climbs with the value
+    Knob& asRocket()
+    {
+        slider.getProperties().set ("tk", "rocket");
+        slider.setSliderStyle (juce::Slider::LinearVertical);
+        slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, compact ? 14 : 16);
+        return *this;
+    }
+
     juce::Slider slider;
     juce::Label label;
 
@@ -163,6 +174,26 @@ inline void drawTag (juce::Graphics& g, juce::Rectangle<float> r, const juce::St
     g.setColour (LNF::background);
     g.setFont (LNF::font (r.getHeight() * 0.62f));
     g.drawText (text.toUpperCase(), r, juce::Justification::centred);
+}
+
+// Mix: thin constellation lines joining the knobs of a module, a little star on each knob
+inline void drawConstellation (juce::Graphics& g, std::initializer_list<juce::Component*> knobs, juce::Colour c)
+{
+    std::vector<juce::Point<float>> pts;
+    for (auto* k : knobs) if (k != nullptr && k->isVisible()) pts.push_back (k->getBounds().toFloat().getCentre().translated (0.0f, 6.0f));
+    if (pts.size() < 2) return;
+    g.setColour (c.withAlpha (0.35f));
+    for (size_t i = 1; i < pts.size(); ++i)
+    {
+        juce::Path p; p.startNewSubPath (pts[i - 1]); p.lineTo (pts[i]);
+        float dashes[] = { 2.0f, 5.0f };
+        juce::PathStrokeType (1.2f).createDashedStroke (p, p, dashes, 2);
+        g.fillPath (p);
+    }
+    for (auto& p : pts)
+    {
+        g.setColour (c.withAlpha (0.18f)); g.fillEllipse (p.x - 7.0f, p.y - 7.0f, 14.0f, 14.0f);
+    }
 }
 
 // Panel + tag in one call
@@ -422,9 +453,9 @@ protected:
     void drawPanelT (juce::Graphics& g, juce::Rectangle<int> r, juce::Colour accent) const { drawPanel (g, r.toFloat(), accent, panelBase()); }
 
     // "i" next to a module tag (design coordinates)
-    InfoIcon& addInfo (int x, int y, const juce::String& textUtf8)
+    InfoIcon& addInfo (int x, int y, const juce::String& textUtf8, const juce::String& title = {})
     {
-        auto* i = infoIcons.add (new InfoIcon (textUtf8));
+        auto* i = infoIcons.add (new InfoIcon (textUtf8, title));
         i->setBounds (x, y, 18, 18);
         content.addAndMakeVisible (i);
         return *i;
@@ -432,7 +463,7 @@ protected:
     // i placed right after a module tag drawn by drawModule()
     InfoIcon& addModuleInfo (juce::Rectangle<int> panel, const juce::String& name, const juce::String& text, bool narrow = false)
     {
-        return addInfo (panel.getX() + 12 + (int) tagWidth (name, narrow) + 6, panel.getY() + 12, text);
+        return addInfo (panel.getX() + 12 + (int) tagWidth (name, narrow) + 6, panel.getY() + 12, text, name);
     }
     // compact ON button for narrow modules
     static juce::Rectangle<int> onBoundsCompact (juce::Rectangle<int> panel) { return { panel.getRight() - 42, panel.getY() + 10, 34, 22 }; }

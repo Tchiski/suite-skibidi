@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "TchiskibidiPresets.h"
 #include "TchiskibidiWidgets.h"
 
 class VocalEditor : public tchk::ScaledEditor, private juce::Timer
@@ -16,6 +17,8 @@ private:
 
     VocalProcessor& audioProcessor;
     juce::ComboBox presetBox;
+    tchk::HeartButton heartButton;
+    std::unique_ptr<tchk::PresetSystem> presets;
 
     // Autotune piano roll: white line = the voice, coloured line = the corrected voice
     struct PitchRoll : public juce::Component

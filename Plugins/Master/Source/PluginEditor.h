@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "TchiskibidiPresets.h"
 #include "TchiskibidiWidgets.h"
 
 class MasterEditor : public tchk::ScaledEditor,
@@ -72,6 +73,8 @@ private:
 
     // Top bar
     juce::ComboBox presetBox;
+    tchk::HeartButton heartButton;
+    std::unique_ptr<tchk::PresetSystem> presets;
     juce::TextButton undoButton { "UNDO" }, redoButton { "REDO" }, aButton { "A" }, bButton { "B" }, copyButton { "A>B" };
     tchk::Toggle bypassButton, matchButton;
 

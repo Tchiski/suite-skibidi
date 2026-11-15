@@ -44,13 +44,10 @@ MasterEditor::MasterEditor (MasterProcessor& p)
     p.scopeWanted = true;
 
     // Top bar
-    presetBox.setTextWhenNothingSelected ("PRESETS");
-    presetBox.addItemList (MasterProcessor::getPresetNames(), 1);
-    presetBox.onChange = [this]
-    {
-        if (presetBox.getSelectedId() > 0)
-            audioProcessor.applyPreset (presetBox.getSelectedId() - 1);
-    };
+    presets = std::make_unique<tchk::PresetSystem> (p, "Master", presetBox, heartButton,
+        [] (juce::ComboBox& b) { b.addItemList (MasterProcessor::getPresetNames(), 1); },
+        [this] (int i) { audioProcessor.applyPreset (i); });
+    inputKnob.asRocket(); output.asRocket();
     undoButton.onClick = [this] { audioProcessor.undoManager.undo(); };
     redoButton.onClick = [this] { audioProcessor.undoManager.redo(); };
     aButton.onClick = [this] { if (audioProcessor.getCurrentSlot() != 0) audioProcessor.switchAB(); };
@@ -66,7 +63,7 @@ MasterEditor::MasterEditor (MasterProcessor& p)
     autoAttachment = std::make_unique<tchk::APVTS::ButtonAttachment> (p.apvts, "auto", autoButton);
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             &presetBox, &undoButton, &redoButton, &aButton, &bButton, &copyButton, &bypassButton, &matchButton,
+             &presetBox, &heartButton, &undoButton, &redoButton, &aButton, &bButton, &copyButton, &bypassButton, &matchButton,
              &inputKnob, &inputMeter, &autoButton, &targetBox,
              &specOn, &compOn, &eqOn, &stereoOn, &analogOn, &clipOn, &limOn, &bassMono,
              &specAmt, &glue, &detail, &bass, &air, &width, &color, &clipGain, &limGain, &ceiling, &release, &output,
@@ -77,21 +74,21 @@ MasterEditor::MasterEditor (MasterProcessor& p)
     layout();
     const char* names[] = { "Spectral", "Comp", "EQ", "Stereo", "Analog", "Clip", "Limiter" };
     const juce::String tips[] = {
-        TK_FR ("Équilibre automatiquement les graves, les médiums et les aigus, à petites doses. La courbe montre ce qu'il corrige."),
-        TK_FR ("GLUE soude le mix, DETAIL fait remonter les petits détails. Les barres L M H = graves, médiums, aigus."),
-        TK_FR ("BASS agit vers 80 Hz, AIR vers 12 kHz."),
-        TK_FR ("WIDTH élargit l'image. Le vectorscope montre ta stéréo : nuage vertical = mono, large = stéréo, à plat ou rouge = problème de phase. BASS MONO garde les basses au centre."),
-        TK_FR ("Saturation chaude : Tape, Tube ou Crunch. COLOR = quantité."),
-        TK_FR ("Arrondit les pics juste avant le limiteur."),
-        TK_FR ("GAIN monte le volume, CEILING = plafond à ne jamais dépasser (-1 dB conseillé), RELEASE = vitesse de relâchement, OUTPUT = volume final. La qualité (2x ou 4x) se règle dans la roue de réglages.") };
+        TK_FR ("Équilibre graves, médiums, aigus.||Équilibre automatiquement les graves, les médiums et les aigus, à petites doses. La courbe montre ce qu'il corrige."),
+        TK_FR ("Soude le mix (GLUE), fait ressortir les détails.||GLUE soude le mix, DETAIL fait remonter les petits détails. Les barres L M H = graves, médiums, aigus."),
+        TK_FR ("Plus ou moins de basses et d'air.||BASS agit vers 80 Hz, AIR vers 12 kHz."),
+        TK_FR ("Largeur stéréo et vectorscope.||WIDTH élargit l'image. Le vectorscope montre ta stéréo : nuage vertical = mono, large = stéréo, à plat ou rouge = problème de phase. BASS MONO garde les basses au centre."),
+        TK_FR ("Chaleur analogique : Tape, Tube ou Crunch.||Saturation chaude : Tape, Tube ou Crunch. COLOR = quantité."),
+        TK_FR ("Arrondit les pics avant le limiteur.||Arrondit les pics juste avant le limiteur."),
+        TK_FR ("Monte le volume sans dépasser le plafond.||GAIN monte le volume, CEILING = plafond à ne jamais dépasser (-1 dB conseillé), RELEASE = vitesse de relâchement, OUTPUT = volume final. La qualité (2x ou 4x) se règle dans la roue de réglages.") };
     const juce::Rectangle<int> areas[] = { specArea, compArea, eqArea, stereoArea, analogArea, clipArea, limArea };
     for (int i = 0; i < 7; ++i)
         addInfo (areas[i].getX() + 120, areas[i].getY() + 15, tips[i]);
     juce::ignoreUnused (names);
-    addInfo (440, 100, TK_FR ("La jauge montre le volume perçu (LUFS) en direct. La zone verte est ta CIBLE. AUTO règle le volume pour l'atteindre."));
-    addInfo (spiceArea.getX() + 238, spiceArea.getY() + 12, TK_FR ("Un seul curseur qui dose tout le mastering d'un coup : à gauche léger et naturel, à droite à fond. Les boutons des modules bougent tout seuls avec lui."));
+    addInfo (440, 100, TK_FR ("Volume perçu. Vise la zone verte.||La jauge montre le volume perçu (LUFS) en direct. La zone verte est ta CIBLE. AUTO règle le volume pour l'atteindre."));
+    addInfo (spiceArea.getX() + 238, spiceArea.getY() + 12, TK_FR ("Un curseur qui dose tout le mastering.||Un seul curseur qui dose tout le mastering d'un coup : à gauche léger et naturel, à droite à fond. Les boutons des modules bougent tout seuls avec lui."));
     const float boxW = (604.0f - 4 * 8.0f) / 5.0f;
-    addInfo (meterArea.getX() + (int) boxW - 22, meterArea.getY() + 4, TK_FR ("LUFS = volume perçu (S = 3 dernières secondes, I = moyenne du morceau). TRUE PEAK = pic le plus haut. DYNAMICS = écart entre pics et moyenne (OUVERT, PUNCHY, DENSE, ÉCRASÉ). STEREO = compatibilité mono (négatif = problème de phase)."));
+    addInfo (meterArea.getX() + (int) boxW - 22, meterArea.getY() + 4, TK_FR ("Les mesures de ton master.||LUFS = volume perçu (S = 3 dernières secondes, I = moyenne du morceau). TRUE PEAK = pic le plus haut. DYNAMICS = écart entre pics et moyenne (OUVERT, PUNCHY, DENSE, ÉCRASÉ). STEREO = compatibilité mono (négatif = problème de phase)."));
 
     settingsExtras.push_back ({ TK_FR ("Qualité du limiteur"), juce::StringArray { TK_FR ("Éco 2x (moins de CPU)"), TK_FR ("Haute 4x") },
                                 [this] { return audioProcessor.isOversamplingHQ() ? 1 : 0; },
@@ -112,6 +109,7 @@ MasterEditor::~MasterEditor()
 void MasterEditor::layout()
 {
     presetBox.setBounds (404, 20, 182, 26);
+    heartButton.setBounds (372, 20, 26, 26);
 
     int x = 18;
     for (auto* b : { &undoButton, &redoButton })

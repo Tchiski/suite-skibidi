@@ -138,3 +138,13 @@ Plugins/Space/Source/
 
 Construit avec [JUCE](https://juce.com), téléchargé automatiquement au moment du build.
 Licence JUCE : gratuite pour un usage perso et les petits revenus. Si tu veux vendre la suite un jour, vérifie les conditions de JUCE.
+
+## Nouveautés v0.4
+
+**Dans les 5 plugins :** les fusées pour les volumes, les planètes avec leur soleil pour les dosages (Mix / dry-wet), les constellations dans Mix. Les petits « i » montrent une phrase au survol et une fiche complète quand on clique dessus. Le cœur ♥ à côté de PRESETS (Mix, Vocal, Master) garde tes propres réglages (rangés dans Musique > Tchiskibidi > Presets).
+
+**Trois nouveaux instruments** (à mettre sur une piste MIDI) :
+
+- **Tchiskibidi Accords** : choisis la tonalité, la gamme, 4 ou 8 mesures et une ambiance, clique l'étoile : nouvelle suite d'accords. Elle joue avec Ableton (barre d'espace) et recommence au début de ta boucle. Grille MIDI modifiable, « Glisser le MIDI / l'audio » vers une piste. « Écouter mes pistes » : règle « MIDI From » sur ta piste (ou choisis-la dans Sidechain), lance la lecture, il propose une progression qui va avec.
+- **Tchiskibidi Synthe** : 152 sons en 8 familles (pads, plucks, leads, cordes, basses, keys, cloches, effets), 4 macros (Brillance, Espace, Mouvement, Attaque) + 8 réglages fins. La comète tire des réglages au hasard, « Revenir » annule, ♥ garde le son dans « Mes sons ».
+- **Tchiskibidi Basse** : 808 et lignes de basse en 8 styles (Trap, Drill, R&B, Afro, Boom bap, Reggaeton, House, Funk), 16 sons, clic droit sur une note = glissé. « Suivre mes accords » : sur la piste Basse, règle « MIDI From » sur ta piste Accords ; après un tour de boucle la basse suit tes accords.

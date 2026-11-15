@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "TchiskibidiPresets.h"
 #include "TchiskibidiWidgets.h"
 
 class MixEditor : public tchk::ScaledEditor, private juce::Timer
@@ -60,6 +61,8 @@ private:
 
     MixProcessor& audioProcessor;
     juce::ComboBox presetBox;
+    tchk::HeartButton heartButton;
+    std::unique_ptr<tchk::PresetSystem> presets;
     juce::TextButton paramButton { "PARAM" }, multiButton { "MULTI" };
     tchk::Toggle eqOn, compOn, transOn, excOn, clipOn;
     tchk::Knob lowcut, lowGain, lowFreq, midGain, midFreq, midQ, hmidGain, hmidFreq, highGain, highFreq;

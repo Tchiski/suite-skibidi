@@ -40,17 +40,19 @@ VocalEditor::VocalEditor (VocalProcessor& p)
     levelDb = [&p] { return p.outputPeakDb.load(); };
     p.autotune.displayWanted = true;
 
-    presetBox.setTextWhenNothingSelected ("PRESETS");
-    {
-        const auto names = VocalProcessor::getPresetNames();
-        for (int i = 0; i < names.size(); ++i)
+    presets = std::make_unique<tchk::PresetSystem> (p, "Vocal", presetBox, heartButton,
+        [] (juce::ComboBox& b)
         {
-            if (i == VocalProcessor::numGenericPresets)
-                presetBox.addSectionHeading ("ARTISTES");
-            presetBox.addItem (names[i], i + 1);
-        }
-    }
-    presetBox.onChange = [this] { if (presetBox.getSelectedId() > 0) audioProcessor.applyPreset (presetBox.getSelectedId() - 1); };
+            const auto names = VocalProcessor::getPresetNames();
+            for (int i = 0; i < names.size(); ++i)
+            {
+                if (i == VocalProcessor::numGenericPresets)
+                    b.addSectionHeading ("ARTISTES");
+                b.addItem (names[i], i + 1);
+            }
+        },
+        [this] (int i) { audioProcessor.applyPreset (i); });
+    delayMix.asOrbit(); verbMix.asOrbit(); input.asRocket(); output.asRocket();
 
     curve.colour = cEq;
     curve.rangeDb = 12.0f;
@@ -61,23 +63,23 @@ VocalEditor::VocalEditor (VocalProcessor& p)
     };
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             &presetBox, &tuneOn, &tuneSpeed, &tuneAmount, &tuneKey, &tuneScale, &pitchRoll, &sFlash, &levelOn, &deessOn, &eqOn, &compOn, &warmOn, &dblOn, &delayOn, &verbOn,
+             &presetBox, &heartButton, &tuneOn, &tuneSpeed, &tuneAmount, &tuneKey, &tuneScale, &pitchRoll, &sFlash, &levelOn, &deessOn, &eqOn, &compOn, &warmOn, &dblOn, &delayOn, &verbOn,
              &levelAmt, &deessFreq, &deessAmt, &lowcut, &mud, &presence, &air, &compAmt, &compSpeed, &warmth,
              &dblAmt, &dblWidth, &delayMix, &delayFb, &verbMix, &verbSize, &input, &output, &delayDiv, &curve,
              &levelMeter, &deessMeter, &compMeter, &inMeter, &outMeter })
         content.addAndMakeVisible (c);
 
     layout();
-    addModuleInfo (levelArea, "Level", TK_FR ("Égalise automatiquement le volume de la voix, comme un ingé son qui bouge le fader."), true);
+    addModuleInfo (levelArea, "Level", TK_FR ("Volume de voix régulier, automatiquement.||Égalise automatiquement le volume de la voix, comme un ingé son qui bouge le fader."), true);
     addModuleInfo (deessArea, "De-ess", TK_FR ("Calme les « S » qui sifflent. Le S s'allume quand il agit. FREQ = zone des sifflantes."));
-    addModuleInfo (eqArea, "EQ voix", TK_FR ("LOW CUT enlève les graves inutiles, MUD le son boueux vers 300 Hz, PRESENCE fait ressortir la voix, AIR ajoute de la brillance."));
-    addModuleInfo (compArea, "Comp", TK_FR ("Rend le volume plus régulier. AMOUNT = force, SPEED = vitesse."));
-    addInfo (warmArea.getRight() - 26, warmArea.getBottom() - 26, TK_FR ("Saturation chaude façon lampe."));
-    addModuleInfo (dblArea, "Double", TK_FR ("Imite une deuxième prise de voix, pour élargir le son."));
+    addModuleInfo (eqArea, "EQ voix", TK_FR ("Une zone de la voix par bouton.||LOW CUT enlève les graves inutiles, MUD le son boueux vers 300 Hz, PRESENCE fait ressortir la voix, AIR ajoute de la brillance."));
+    addModuleInfo (compArea, "Comp", TK_FR ("Volume plus régulier.||Rend le volume plus régulier. AMOUNT = force, SPEED = vitesse."));
+    addInfo (warmArea.getRight() - 26, warmArea.getBottom() - 26, TK_FR ("Chaleur façon lampe.||Saturation chaude façon lampe."));
+    addModuleInfo (dblArea, "Double", TK_FR ("Élargit la voix.||Imite une deuxième prise de voix, pour élargir le son."));
     addModuleInfo (inArea, "Input", TK_FR ("Volume d'entrée."));
-    addModuleInfo (tuneArea, "Autotune", TK_FR ("Corrige la justesse. Choisis la tonalité et la gamme de ton morceau (Chromatique marche partout). SPEED 0 ms = effet robot, 100 ms et + = naturel. Sur le piano roll : ligne blanche = ta voix, ligne turquoise = la voix corrigée. La roue de réglages permet de choisir le type de voix."));
-    addModuleInfo (delayArea, "Delay", TK_FR ("Échos calés sur le tempo du morceau. TEMPO = longueur des échos."));
-    addModuleInfo (verbArea, "Reverb", TK_FR ("Espace autour de la voix : MIX = quantité, SIZE = taille."));
+    addModuleInfo (tuneArea, "Autotune", TK_FR ("Choisis ta tonalité : la voix est recalée dessus.||Corrige la justesse. Choisis la tonalité et la gamme de ton morceau (Chromatique marche partout). SPEED 0 ms = effet robot, 100 ms et + = naturel. Sur le piano roll : ligne blanche = ta voix, ligne turquoise = la voix corrigée. La roue de réglages permet de choisir le type de voix."));
+    addModuleInfo (delayArea, "Delay", TK_FR ("Échos calés sur le tempo.||Échos calés sur le tempo du morceau. TEMPO = longueur des échos."));
+    addModuleInfo (verbArea, "Reverb", TK_FR ("Espace autour de la voix.||Espace autour de la voix : MIX = quantité, SIZE = taille."));
     addModuleInfo (outArea, "Output", TK_FR ("Volume de sortie."));
 
     settingsExtras.push_back ({ TK_FR ("Autotune : type de voix"), tchk::AutoTune::rangeNames(),
@@ -92,6 +94,7 @@ VocalEditor::VocalEditor (VocalProcessor& p)
 void VocalEditor::layout()
 {
     presetBox.setBounds (kW - 236, 20, 182, 26);
+    heartButton.setBounds (kW - 268, 20, 26, 26);
 
     levelArea = { 18, 64, 160, 166 };
     deessArea = { 186, 64, 210, 166 };

@@ -24,6 +24,7 @@ CleanEditor::CleanEditor (CleanProcessor& p)
     content.layoutFn = [this] { layout(); };
     content.overFn = [this] (juce::Graphics& g) { paintDynamic (g); };
     levelDb = [&p] { return p.outputPeakDb.load(); };
+    output.asRocket();
     p.displayWanted = true;
 
     learnButton.setClickingTogglesState (true);
@@ -37,12 +38,12 @@ CleanEditor::CleanEditor (CleanProcessor& p)
         content.addAndMakeVisible (c);
 
     layout();
-    addInfo (spectrumArea.getX() + 130, spectrumArea.getY() + 15, TK_FR ("Le spectre de ton son : en rose le signal, en cyan le bruit que Clean a repéré. Plus la ligne cyan est basse, plus ton enregistrement est propre."));
-    addModuleInfo (dnArea, "De-noise", TK_FR ("Enlève le souffle. Appuie sur LEARN pendant un passage où il n'y a que du bruit (3 secondes) : Clean l'apprend. ADAPTATIF suit le bruit tout seul, EFFACER oublie ce qui a été appris. SENSIBILITÉ : plus haut = enlève plus."));
-    addModuleInfo (humArea, "De-hum", TK_FR ("Enlève le bourdonnement électrique. Mets 50 Hz en Europe. HARMONIQUES = nombre d'échos du bourdonnement retirés."));
-    addModuleInfo (clickArea, "De-click", TK_FR ("Répare les petits clics et craquements. Le compteur montre combien il en a réparé."), true);
+    addInfo (spectrumArea.getX() + 130, spectrumArea.getY() + 15, TK_FR ("Rose = ton son, cyan = le bruit repéré.||Le spectre de ton son : en rose le signal, en cyan le bruit que Clean a repéré. Plus la ligne cyan est basse, plus ton enregistrement est propre."));
+    addModuleInfo (dnArea, "De-noise", TK_FR ("Appuie LEARN sur un passage de bruit seul.||Enlève le souffle. Appuie sur LEARN pendant un passage où il n'y a que du bruit (3 secondes) : Clean l'apprend. ADAPTATIF suit le bruit tout seul, EFFACER oublie ce qui a été appris. SENSIBILITÉ : plus haut = enlève plus."));
+    addModuleInfo (humArea, "De-hum", TK_FR ("Enlève le bourdonnement. 50 Hz en Europe.||Enlève le bourdonnement électrique. Mets 50 Hz en Europe. HARMONIQUES = nombre d'échos du bourdonnement retirés."));
+    addModuleInfo (clickArea, "De-click", TK_FR ("Répare clics et craquements.||Répare les petits clics et craquements. Le compteur montre combien il en a réparé."), true);
     addModuleInfo (lowArea, "Rumble", TK_FR ("Coupe les grondements graves (vent, pas, clim)."));
-    addModuleInfo (listenArea, TK_FR ("Écoute"), TK_FR ("Fais entendre seulement ce qui est retiré : si tu entends la voix, tu en enlèves trop."));
+    addModuleInfo (listenArea, TK_FR ("Écoute"), TK_FR ("Écoute seulement ce qui est retiré.||Fais entendre seulement ce qui est retiré : si tu entends la voix, tu en enlèves trop."));
     addModuleInfo (outArea, "Output", TK_FR ("Volume de sortie."));
     finishSetup (44, { { 230, 14, 50 }, { 320, 36, 32 }, { 420, 14, 40 }, { 520, 30, 34 }, { 640, 16, 44 } });
     startTimerHz (30);

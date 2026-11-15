@@ -35,9 +35,10 @@ MixEditor::MixEditor (MixProcessor& p)
     content.layoutFn = [this] { layout(); };
     levelDb = [&p] { return p.outputPeakDb.load(); };
 
-    presetBox.setTextWhenNothingSelected ("PRESETS");
-    presetBox.addItemList (MixProcessor::getPresetNames(), 1);
-    presetBox.onChange = [this] { if (presetBox.getSelectedId() > 0) audioProcessor.applyPreset (presetBox.getSelectedId() - 1); };
+    presets = std::make_unique<tchk::PresetSystem> (p, "Mix", presetBox, heartButton,
+        [] (juce::ComboBox& b) { b.addItemList (MixProcessor::getPresetNames(), 1); },
+        [this] (int i) { audioProcessor.applyPreset (i); });
+    compMix.asOrbit(); input.asRocket(); output.asRocket();
 
     for (auto* b : { &paramButton, &multiButton })
     {
@@ -57,20 +58,20 @@ MixEditor::MixEditor (MixProcessor& p)
     multiButton.onClick = [setMode] { setMode (1.0f); };
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             &presetBox, &paramButton, &multiButton, &eqOn, &compOn, &transOn, &excOn, &clipOn,
+             &presetBox, &heartButton, &paramButton, &multiButton, &eqOn, &compOn, &transOn, &excOn, &clipOn,
              &lowcut, &lowGain, &lowFreq, &midGain, &midFreq, &midQ, &hmidGain, &hmidFreq, &highGain, &highFreq,
              &threshold, &ratio, &attack, &release, &compMix, &punch, &sustain, &excDrive, &excFreq, &excAmount,
              &clip, &width, &input, &output, &eqView, &compView, &transView, &grMeter, &clipMeter, &inMeter, &outMeter })
         content.addAndMakeVisible (c);
 
     layout();
-    addModuleInfo (eqArea, "EQ", TK_FR ("Sculpte le son. Attrape les points sur la courbe : gauche/droite = fréquence, haut/bas = volume, molette sur le point 2 = largeur, double-clic = remise à zéro. PARAM = 4 bandes libres, MULTI = 10 curseurs fixes comme une table de mixage."));
-    addModuleInfo (compArea, "Comp", TK_FR ("Resserre le volume. Le point montre ton son en direct : quand il passe au-dessus du coude de la courbe, il est compressé. THRESH = seuil, RATIO = force, ATTACK/RELEASE = vitesse, MIX = compression parallèle."));
-    addModuleInfo (transArea, "Transient", TK_FR ("PUNCH renforce ou adoucit l'attaque (le claquement), SUSTAIN allonge ou raccourcit la queue. Gris = avant, couleur = après."), true);
-    addModuleInfo (excArea, "Exciter", TK_FR ("Ajoute de la brillance au-dessus de TONE. AMOUNT est à 0 par défaut : monte-le pour l'entendre."), true);
-    addModuleInfo (clipArea, "Clip", TK_FR ("Arrondit les pics trop forts au-dessus de THRESHOLD, pour gagner du volume sans craquer."));
-    addModuleInfo (widthArea, "Stereo", TK_FR ("0 % = mono, 100 % = normal, 200 % = très large."));
-    addModuleInfo (ioArea, "In / Out", TK_FR ("Volume d'entrée et de sortie, avec les vu-mètres."));
+    addModuleInfo (eqArea, "EQ", TK_FR ("Attrape les points de la courbe pour sculpter le son.||Sculpte le son. Attrape les points sur la courbe : gauche/droite = fréquence, haut/bas = volume, molette sur le point 2 = largeur, double-clic = remise à zéro. PARAM = 4 bandes libres, MULTI = 10 curseurs fixes comme une table de mixage."));
+    addModuleInfo (compArea, "Comp", TK_FR ("Rend le volume plus régulier.||Resserre le volume. Le point montre ton son en direct : quand il passe au-dessus du coude de la courbe, il est compressé. THRESH = seuil, RATIO = force, ATTACK/RELEASE = vitesse, MIX = compression parallèle."));
+    addModuleInfo (transArea, "Transient", TK_FR ("Plus ou moins d'attaque et de queue.||PUNCH renforce ou adoucit l'attaque (le claquement), SUSTAIN allonge ou raccourcit la queue. Gris = avant, couleur = après."), true);
+    addModuleInfo (excArea, "Exciter", TK_FR ("Ajoute de la brillance. Monte AMOUNT.||Ajoute de la brillance au-dessus de TONE. AMOUNT est à 0 par défaut : monte-le pour l'entendre."), true);
+    addModuleInfo (clipArea, "Clip", TK_FR ("Arrondit les pics pour gagner du volume.||Arrondit les pics trop forts au-dessus de THRESHOLD, pour gagner du volume sans craquer."));
+    addModuleInfo (widthArea, "Stereo", TK_FR ("Largeur stéréo.||0 % = mono, 100 % = normal, 200 % = très large."));
+    addModuleInfo (ioArea, "In / Out", TK_FR ("Volumes d'entrée et de sortie.||Volume d'entrée et de sortie, avec les vu-mètres."));
 
     gearBounds = { kW - 42, 20, 26, 26 };
     finishSetup (22, { { 220, 14, 50 }, { 300, 34, 32 }, { 390, 12, 40 }, { 470, 32, 30 }, { 545, 10, 34 } });
@@ -81,6 +82,7 @@ MixEditor::MixEditor (MixProcessor& p)
 void MixEditor::layout()
 {
     presetBox.setBounds (kW - 236, 20, 182, 26);
+    heartButton.setBounds (kW - 268, 20, 26, 26);
 
     eqArea    = { 18, 64, 824, 280 };
     compArea  = { 18, 352, 452, 170 };
@@ -144,6 +146,11 @@ void MixEditor::paintContent (juce::Graphics& g)
     drawModuleT (g, clipArea, "Clip", cClip);
     drawModuleT (g, widthArea, "Stereo", cWidth);
     drawModuleT (g, ioArea, "In / Out", cIo);
+    // constellations: the knobs of each module are joined like stars
+    tchk::drawConstellation (g, { &lowcut, &lowGain, &lowFreq, &midGain, &midFreq, &midQ, &hmidGain, &hmidFreq, &highGain, &highFreq }, cEq);
+    tchk::drawConstellation (g, { &threshold, &ratio, &attack, &release, &compMix }, cComp);
+    tchk::drawConstellation (g, { &punch, &sustain }, cTrans);
+    tchk::drawConstellation (g, { &excDrive, &excFreq, &excAmount }, cExc);
 
     g.setColour (LNF::textDim);
     g.setFont (LNF::font (9.0f));

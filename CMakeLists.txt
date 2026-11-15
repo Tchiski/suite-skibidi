@@ -34,4 +34,7 @@ add_subdirectory(Plugins/Master)
 add_subdirectory(Plugins/Mix)
 add_subdirectory(Plugins/Vocal)
 add_subdirectory(Plugins/Clean)
+add_subdirectory(Plugins/Accords)
+add_subdirectory(Plugins/Synth)
+add_subdirectory(Plugins/Basse)
 # Next ones: add_subdirectory(Plugins/Distortion), Plugins/Filter, ...

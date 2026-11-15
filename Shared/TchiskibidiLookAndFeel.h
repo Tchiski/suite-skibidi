@@ -57,6 +57,11 @@ public:
         const auto angle = startAngle + sliderPos * (endAngle - startAngle);
         const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
         const bool enabled = slider.isEnabled();
+        if (slider.getProperties()["tk"].toString() == "orbit")
+        {
+            drawOrbit (g, bounds, sliderPos, startAngle, endAngle, accent, enabled);
+            return;
+        }
 
         const float lineWidth = juce::jmax (3.0f, radius * 0.09f);
         const float arcRadius = radius - lineWidth * 0.5f;
@@ -95,6 +100,74 @@ public:
         const auto p2 = centre.getPointOnCircumference (knobRadius * 0.85f, angle);
         g.setColour (enabled ? text : textDim.withAlpha (0.5f));
         g.drawLine ({ p1, p2 }, juce::jmax (2.0f, lineWidth * 0.7f));
+    }
+
+    // planet + sun: the sun travels on the dashed orbit, the arc behind it shows the value
+    static void drawOrbit (juce::Graphics& g, juce::Rectangle<float> bounds, float pos, float a0, float a1, juce::Colour accent, bool enabled)
+    {
+        const float R = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 5.0f;
+        if (R < 6.0f) return;
+        const auto c = bounds.getCentre();
+        const auto angle = a0 + pos * (a1 - a0);
+        juce::Path orbit; orbit.addCentredArc (c.x, c.y, R, R, 0.0f, 0.0f, juce::MathConstants<float>::twoPi, true);
+        float dashes[] = { 2.0f, 4.0f };
+        juce::Path dashed; juce::PathStrokeType (1.0f).createDashedStroke (dashed, orbit, dashes, 2);
+        g.setColour (juce::Colours::white.withAlpha (0.18f)); g.fillPath (dashed);
+        juce::Path trail; trail.addCentredArc (c.x, c.y, R, R, 0.0f, a0, angle, true);
+        g.setColour (juce::Colour (0xffffd34d).withAlpha (enabled ? 0.85f : 0.3f));
+        g.strokePath (trail, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        // planet with its ring
+        const float pr = R * 0.42f;
+        g.setGradientFill (juce::ColourGradient (accent.brighter (0.8f), c.x - pr * 0.4f, c.y - pr * 0.5f, juce::Colour (0xff120a1f), c.x + pr, c.y + pr, true));
+        g.fillEllipse (c.x - pr, c.y - pr, pr * 2.0f, pr * 2.0f);
+        g.setColour (accent.withAlpha (0.75f));
+        juce::Path ring; ring.addEllipse (juce::Rectangle<float> (pr * 3.1f, pr * 0.76f).withCentre (c));
+        g.strokePath (ring, juce::PathStrokeType (1.4f), juce::AffineTransform::rotation (-0.31f, c.x, c.y));
+        // the sun
+        const auto s = c.getPointOnCircumference (R, angle);
+        g.setColour (juce::Colour (0xffffd34d).withAlpha (0.25f)); g.fillEllipse (s.x - 10.0f, s.y - 10.0f, 20.0f, 20.0f);
+        g.setColour (juce::Colour (0xffffe680)); g.fillEllipse (s.x - 6.0f, s.y - 6.0f, 12.0f, 12.0f);
+        g.setColour (juce::Colour (0xffffb020)); g.drawEllipse (s.x - 6.0f, s.y - 6.0f, 12.0f, 12.0f, 1.2f);
+    }
+
+    void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos, float minPos, float maxPos,
+                           juce::Slider::SliderStyle style, juce::Slider& slider) override
+    {
+        if (slider.getProperties()["tk"].toString() != "rocket")
+        {
+            juce::LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos, minPos, maxPos, style, slider);
+            return;
+        }
+        // rocket fader: dashed launch rail, glowing flight trail, rocket at the value
+        const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
+        const float cx = (float) x + (float) width * 0.5f;
+        float dashes[] = { 2.0f, 5.0f };
+        juce::Path rail; rail.startNewSubPath (cx, (float) y + 4.0f); rail.lineTo (cx, (float) (y + height) - 2.0f);
+        juce::Path d; juce::PathStrokeType (1.2f).createDashedStroke (d, rail, dashes, 2);
+        g.setColour (juce::Colours::white.withAlpha (0.25f)); g.fillPath (d);
+        const float ry = juce::jlimit ((float) y + 14.0f, (float) (y + height) - 10.0f, sliderPos);
+        g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.0f), cx, (float) (y + height), accent.withAlpha (0.6f), cx, ry, false));
+        g.fillRoundedRectangle (cx - 2.5f, ry, 5.0f, (float) (y + height) - ry, 2.5f);
+        const float w = juce::jlimit (10.0f, 18.0f, (float) width * 0.35f), h = w * 2.0f;
+        // flame
+        juce::Path flame; flame.startNewSubPath (cx - w * 0.3f, ry + h * 0.38f); flame.quadraticTo (cx, ry + h * 0.38f + w * 1.2f, cx + w * 0.3f, ry + h * 0.38f); flame.closeSubPath();
+        g.setColour (juce::Colour (0xffffa23d)); g.fillPath (flame);
+        // body
+        juce::Path body;
+        body.startNewSubPath (cx, ry - h * 0.62f);
+        body.cubicTo (cx + w * 0.55f, ry - h * 0.35f, cx + w * 0.5f, ry + h * 0.2f, cx + w * 0.38f, ry + h * 0.4f);
+        body.lineTo (cx - w * 0.38f, ry + h * 0.4f);
+        body.cubicTo (cx - w * 0.5f, ry + h * 0.2f, cx - w * 0.55f, ry - h * 0.35f, cx, ry - h * 0.62f);
+        body.closeSubPath();
+        g.setColour (juce::Colour (0xfff4ecff)); g.fillPath (body);
+        // fins + window
+        g.setColour (accent);
+        juce::Path fins;
+        fins.addTriangle (cx - w * 0.42f, ry + h * 0.05f, cx - w * 0.85f, ry + h * 0.45f, cx - w * 0.38f, ry + h * 0.38f);
+        fins.addTriangle (cx + w * 0.42f, ry + h * 0.05f, cx + w * 0.85f, ry + h * 0.45f, cx + w * 0.38f, ry + h * 0.38f);
+        g.fillPath (fins);
+        g.fillEllipse (cx - w * 0.2f, ry - h * 0.22f, w * 0.4f, w * 0.4f);
+        g.setColour (juce::Colour (0xff120a1f)); g.drawEllipse (cx - w * 0.2f, ry - h * 0.22f, w * 0.4f, w * 0.4f, 1.0f);
     }
 
     void drawToggleButton (juce::Graphics& g, juce::ToggleButton& button,

@@ -28,15 +28,16 @@ TchiskibidiSpaceEditor::TchiskibidiSpaceEditor (TchiskibidiSpaceProcessor& p)
     content.paintFn = [this] (juce::Graphics& g) { paintContent (g); };
     content.layoutFn = [this] { layout(); };
     levelDb = [&p] { return p.outputPeakDb.load(); };
+    mix.asOrbit(); output.asRocket();
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              &time, &feedback, &wobble, &echoLevel, &lowCut, &highCut, &size, &damping, &width, &reverbLevel, &mix, &output,
              &syncButton, &pingPongButton, &divisionBox, &xyPad, &echoView, &nebulaView, &inMeter, &outMeter })
         content.addAndMakeVisible (c);
 
-    addInfo (18 + 16 + 56, 88 + 13, TK_FR ("Répète ton son. Glisse le point du pad XY : vers la droite les échos sont plus espacés, vers le haut il y a plus de répétitions. SYNC cale l'écho sur le tempo du morceau, PING-PONG le fait voyager de gauche à droite."));
-    addInfo (436 + 16 + 78, 88 + 13, TK_FR ("Ajoute de l'espace. SIZE = taille de la pièce (la nébuleuse grandit), DAMPING = queue plus sombre, WIDTH = largeur stéréo, LEVEL = volume de la réverb."));
-    addInfo (674 + 16 + 80, 88 + 13, TK_FR ("MIX dose le son d'origine et l'effet (0 % = sans effet). OUTPUT = volume final."));
+    addInfo (18 + 16 + 56, 88 + 13, TK_FR ("Glisse le point du pad pour régler l'écho.||Répète ton son. Glisse le point du pad XY : vers la droite les échos sont plus espacés, vers le haut il y a plus de répétitions. SYNC cale l'écho sur le tempo du morceau, PING-PONG le fait voyager de gauche à droite."));
+    addInfo (436 + 16 + 78, 88 + 13, TK_FR ("Ajoute de l'espace autour du son.||Ajoute de l'espace. SIZE = taille de la pièce (la nébuleuse grandit), DAMPING = queue plus sombre, WIDTH = largeur stéréo, LEVEL = volume de la réverb."));
+    addInfo (674 + 16 + 80, 88 + 13, TK_FR ("Dose d'effet et volume final.||MIX dose le son d'origine et l'effet (0 % = sans effet). OUTPUT = volume final."));
 
     layout();
     finishSetup (11, { { 250, 22, 54 }, { 330, 44, 34 }, { 420, 18, 40 }, { 520, 12, 44 }, { 610, 36, 30 }, { 700, 16, 38 } });

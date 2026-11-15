@@ -43,6 +43,15 @@ inline Theme makeTheme (const juce::String& name)
     if (name == "master")
         return { C (0xff3e1408), C (0xff140504), C (0xff220b08), { C (255, 90, 60), C (255, 162, 61), C (255, 225, 77), C (255, 70, 140) },
                  { C (0xfffff2a8), C (0xffffa23d), C (0xffff4f3d) }, C (255, 140, 60), C (0xffffd0a0) };
+    if (name == "accords")
+        return { C (0xff3a0e3e), C (0xff10030f), C (0xff1c0820), { C (255, 211, 77), C (220, 90, 255), C (255, 150, 200), C (255, 243, 196) },
+                 { C (0xfffff3c4), C (0xffffd34d), C (0xffd86bff) }, C (255, 211, 77), C (0xfffff0c8) };
+    if (name == "synth")
+        return { C (0xff1a1450), C (0xff05041a), C (0xff0e0b2c), { C (255, 138, 61), C (110, 90, 255), C (255, 90, 160), C (255, 226, 204) },
+                 { C (0xffffe2cc), C (0xffff8a3d), C (0xff6e5aff) }, C (255, 138, 61), C (0xffffd8c0) };
+    if (name == "basse")
+        return { C (0xff3a0820), C (0xff12020a), C (0xff1e0612), { C (255, 77, 125), C (160, 40, 120), C (255, 140, 170), C (255, 208, 222) },
+                 { C (0xffffd0de), C (0xffff4d7d), C (0xffa02878) }, C (255, 77, 125), C (0xffffc8d8) };
     // space (default): the Plaine des Songes sky
     return { C (0xff241245), C (0xff0e0820), C (0xff160b28), { C (242, 115, 255), C (90, 140, 255), C (190, 90, 255), C (61, 200, 255) },
              { C (0xff9ff6ff), C (0xffb48cff), C (0xffff7ae6) }, C (242, 115, 255), C (0xfff2b8ff) };
@@ -302,15 +311,104 @@ private:
 
 //==============================================================================
 // Small "i": hover it to read an explanation (tooltip)
+// Big explanation card opened by a click on an "i": title, short line, then the details.
+// Text format: "short line||details" where details are paragraphs split by '|',
+// and a paragraph "WORD : text" gets its WORD in bold.
+class InfoCard : public juce::Component
+{
+public:
+    InfoCard (const juce::String& titleIn, const juce::String& shortIn, const juce::String& longIn)
+        : title (titleIn.toUpperCase()), shortText (shortIn), longText (longIn)
+    {
+        ok.setButtonText (TK_FR ("Compris"));
+        ok.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffffd34d));
+        ok.setColour (juce::TextButton::textColourOffId, juce::Colour (0xff1a0f08));
+        ok.onClick = [this] { dismiss(); };
+        addAndMakeVisible (ok);
+        setWantsKeyboardFocus (true);
+    }
+    void dismiss() { auto safe = juce::Component::SafePointer<InfoCard> (this); setVisible (false); juce::MessageManager::callAsync ([safe] { if (safe != nullptr) if (auto* p = safe->getParentComponent()) p->removeChildComponent (safe.getComponent()); }); }
+    juce::Rectangle<float> cardBounds() const
+    {
+        const float w = juce::jmin (440.0f, (float) getWidth() - 40.0f);
+        const float h = juce::jmin ((float) getHeight() - 40.0f, 130.0f + layout (w - 48.0f).getHeight());
+        return juce::Rectangle<float> (w, h).withCentre (getLocalBounds().toFloat().getCentre());
+    }
+    juce::TextLayout layout (float width) const
+    {
+        juce::AttributedString as;
+        as.setWordWrap (juce::AttributedString::byWord);
+        as.setLineSpacing (3.0f);
+        const auto txt = juce::Colour (0xfff4ecff), gold = juce::Colour (0xffffd34d);
+        auto paras = juce::StringArray::fromTokens (longText, "|", "");
+        paras.trim(); paras.removeEmptyStrings();
+        for (int i = 0; i < paras.size(); ++i)
+        {
+            auto para = paras[i];
+            const int colon = para.indexOf (" : ");
+            if (colon > 1 && colon < 34 && para.substring (0, colon) == para.substring (0, colon).toUpperCase())
+            {
+                as.append (para.substring (0, colon) + " : ", TchiskibidiLookAndFeel::font (14.0f, true), gold);
+                para = para.substring (colon + 3);
+            }
+            as.append (para + (i + 1 < paras.size() ? "\n\n" : ""), TchiskibidiLookAndFeel::font (14.0f, false), txt);
+        }
+        juce::TextLayout tl; tl.createLayout (as, width); return tl;
+    }
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff04020a).withAlpha (0.6f));
+        const auto r = cardBounds();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1d0f2e), r.getX(), r.getY(), juce::Colour (0xff0c0616), r.getRight(), r.getBottom(), false));
+        g.fillRoundedRectangle (r, 20.0f);
+        g.setColour (juce::Colour (0xffffd34d).withAlpha (0.6f));
+        g.drawRoundedRectangle (r.reduced (0.75f), 20.0f, 1.5f);
+        auto in = r.reduced (24.0f, 20.0f);
+        g.setColour (juce::Colour (0xfff4ecff).withAlpha (0.5f));
+        g.setFont (TchiskibidiLookAndFeel::font (11.0f));
+        g.drawText (title, in.removeFromTop (16.0f), juce::Justification::centredLeft);
+        g.setColour (juce::Colour (0xffffd34d));
+        g.setFont (TchiskibidiLookAndFeel::font (18.0f));
+        g.drawFittedText (shortText, in.removeFromTop (48.0f).toNearestInt(), juce::Justification::centredLeft, 2);
+        in.removeFromBottom (48.0f);
+        layout (in.getWidth()).draw (g, in);
+    }
+    void resized() override
+    {
+        const auto r = cardBounds();
+        ok.setBounds (juce::Rectangle<float> (r.getX() + 24.0f, r.getBottom() - 58.0f, r.getWidth() - 48.0f, 38.0f).toNearestInt());
+    }
+    void mouseDown (const juce::MouseEvent& e) override { if (! cardBounds().contains (e.position)) dismiss(); }
+    bool keyPressed (const juce::KeyPress& k) override { if (k == juce::KeyPress::escapeKey || k == juce::KeyPress::returnKey) { dismiss(); return true; } return false; }
+private:
+    juce::String title, shortText, longText;
+    juce::TextButton ok;
+};
+
+// The little "i": hovering shows the short line, a click opens the full card
 class InfoIcon : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit InfoIcon (const juce::String& text) { setTooltip (text); setSize (18, 18); }
+    explicit InfoIcon (const juce::String& text, const juce::String& titleIn = {}) : title (titleIn)
+    {
+        const int sep = text.indexOf ("||");
+        if (sep >= 0) { shortText = text.substring (0, sep).trim(); longText = text.substring (sep + 2).trim(); }
+        else
+        {
+            longText = text;
+            int end = -1;
+            for (int i = 0; i < text.length() - 1; ++i) if ((text[i] == '.' || text[i] == '!' || text[i] == '?') && text[i + 1] == ' ') { end = i; break; }
+            shortText = end > 0 ? text.substring (0, end + 1) : text;
+        }
+        setTooltip (shortText + "\n" + TK_FR ("(clique le i pour en savoir plus)"));
+        setSize (18, 18);
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    }
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat().reduced (1.0f);
         const bool over = isMouseOver();
-        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.setColour (over ? juce::Colour (0xffffd34d).withAlpha (0.25f) : juce::Colours::black.withAlpha (0.25f));
         g.fillEllipse (r);
         g.setColour (juce::Colour (0xfff4ecff).withAlpha (over ? 1.0f : 0.55f));
         g.drawEllipse (r, 1.4f);
@@ -324,6 +422,18 @@ public:
     }
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }
     void mouseExit (const juce::MouseEvent&) override { repaint(); }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (! e.mouseWasClicked()) return;
+        auto* host = getParentComponent();
+        if (host == nullptr) return;
+        auto* card = new InfoCard (title, shortText, longText);
+        host->addAndMakeVisible (card); // the parent owns it until it is dismissed
+        card->setBounds (host->getLocalBounds());
+        card->toFront (true);
+        card->grabKeyboardFocus();
+    }
+    juce::String title, shortText, longText;
 };
 
 //==============================================================================
