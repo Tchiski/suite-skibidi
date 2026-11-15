@@ -79,8 +79,8 @@ void SynthEditor::layout()
     for (auto* c : catChips) { const int w = 20 + (int) (7.0f * (float) c->getButtonText().length()); cw.push_back (w); total += w + 5; }
     int x = juce::jmax (16, (kW - total) / 2 - 10);
     for (int i = 0; i < catChips.size(); ++i) { catChips[i]->fontSize = 12.0f; catChips[i]->setBounds (x, 64, cw[(size_t) i], 30); x += cw[(size_t) i] + 5; }
-    orb.setBounds (440 - 160, 104, 320, 186);
-    prevB.setBounds (440 - 150, 176, 42, 42); nextB.setBounds (440 + 108, 176, 42, 42);
+    orb.setBounds (440 - 210, 100, 420, 196);
+    prevB.setBounds (440 - 250, 177, 42, 42); nextB.setBounds (440 + 208, 177, 42, 42);
     volume.setBounds (752, 112, 70, 170);
     const int kx[] = { 44, 136, 228, 568, 660, 752 };
     for (int i = 0; i < 12; ++i) knobs[i]->setBounds (kx[i % 6], i < 6 ? 340 : 438, 84, 84);
@@ -119,8 +119,47 @@ void SynthEditor::Orb::paint (juce::Graphics& g)
     const auto& L = looks[juce::jlimit (0, 10, cat)];
     const double t = tchk::nowSec();
     const auto c = getLocalBounds().toFloat().getCentre();
-    const float R = juce::jmin (getWidth(), getHeight()) * 0.5f - 8.0f;
+    static const float sizes[] = { 1.0f, 0.74f, 0.86f, 0.92f, 1.06f, 0.8f, 0.66f, 0.84f, 0.9f, 0.95f, 0.82f };
+    const float R = 88.0f * sizes[juce::jlimit (0, 10, cat)];
     const auto ctr = c.translated (0, 3.0f * std::sin ((float) t * 1.5f));
+    // companions: moons, sun, rings, belt, sparkles, halo... each family has its own
+    struct Moon { float orbit, size, speed; C col; bool bubble; };
+    std::vector<Moon> moons;
+    switch (cat)
+    {
+        case 0: moons = { { 1.75f, 0.16f, 0.5f, C (0xffffe2cc), false } }; break;
+        case 1: moons = { { 1.55f, 0.13f, 1.1f, C (0xffe8fbff), false }, { 1.95f, 0.09f, -0.8f, C (0xffb8f0ff), false } }; break;
+        case 3: moons = { { 2.05f, 0.1f, 0.6f, C (0xffd8c8ff), false } }; break;
+        case 4: moons = { { 1.8f, 0.26f, 0.3f, C (0xff8a5aa8), false } }; break;
+        case 5: moons = { { 1.7f, 0.14f, 0.7f, C (0xffffffff), false } }; break;
+        case 8: moons = { { 1.6f, 0.16f, 0.6f, C (0xffe6ffff), true }, { 1.9f, 0.1f, -0.9f, C (0xffbff6ff), true } }; break;
+        case 9: moons = { { 1.7f, 0.15f, 0.5f, C (0xffb8f0a0), false } }; break;
+        default: break;
+    }
+    auto moonPos = [&] (const Moon& m) { const float a = (float) t * m.speed * 0.7f; return std::make_pair (juce::Point<float> (ctr.x + std::cos (a) * m.orbit * R, ctr.y + std::sin (a) * m.orbit * R * 0.28f), std::sin (a) < 0.0f); };
+    auto drawMoon = [&] (const Moon& m)
+    {
+        auto [p, behind] = moonPos (m);
+        if (behind && std::abs (p.x - ctr.x) < R) return;
+        const float s = m.size * R;
+        if (m.bubble) { g.setColour (m.col.withAlpha (0.3f)); g.fillEllipse (p.x - s, p.y - s, s * 2, s * 2); g.setColour (juce::Colours::white.withAlpha (0.8f)); g.drawEllipse (p.x - s, p.y - s, s * 2, s * 2, 1.5f); g.fillEllipse (p.x - s * 0.5f, p.y - s * 0.6f, s * 0.5f, s * 0.35f); return; }
+        g.setGradientFill (juce::ColourGradient (m.col, p.x - s * 0.4f, p.y - s * 0.4f, m.col.darker (0.8f), p.x + s, p.y + s, true));
+        g.fillEllipse (p.x - s, p.y - s, s * 2, s * 2);
+    };
+    // dashed orbits behind
+    for (auto& m : moons)
+    {
+        juce::Path o; o.addEllipse (ctr.x - m.orbit * R, ctr.y - m.orbit * R * 0.28f, m.orbit * R * 2, m.orbit * R * 0.56f);
+        float dashes[] = { 2.0f, 5.0f }; juce::Path d; juce::PathStrokeType (1.0f).createDashedStroke (d, o, dashes, 2);
+        g.setColour (m.col.withAlpha (0.18f)); g.fillPath (d);
+    }
+    if (cat == 2)   // leads: a little sun
+    {
+        const auto sp = ctr.translated (R * 0.95f, -R * 0.95f); const float s = R * 0.3f;
+        g.setColour (C (0xffffd27a).withAlpha (0.18f)); g.fillEllipse (sp.x - s * 2.2f, sp.y - s * 2.2f, s * 4.4f, s * 4.4f);
+        for (int k = 0; k < 10; ++k) { const float a = (float) k * 0.628f + (float) t * 0.3f; g.setColour (C (0xffffd27a)); g.drawLine (sp.x + std::cos (a) * s * 1.2f, sp.y + std::sin (a) * s * 1.2f, sp.x + std::cos (a) * s * 1.9f, sp.y + std::sin (a) * s * 1.9f, 3.0f); }
+        g.setColour (C (0xffffd27a)); g.fillEllipse (sp.x - s, sp.y - s, s * 2, s * 2);
+    }
     const float rot = (float) t * 0.25f;
     const auto disc = juce::Rectangle<float> (R * 2, R * 2).withCentre (ctr);
     // glow
@@ -223,12 +262,38 @@ void SynthEditor::Orb::paint (juce::Graphics& g)
     g.setColour (L.light.withAlpha (0.35f)); g.drawEllipse (disc.reduced (1.0f), 1.5f);
     g.setColour (juce::Colours::white.withAlpha (cat == 8 ? 0.45f : 0.2f)); g.fillEllipse (ctr.x - R * 0.6f, ctr.y - R * 0.72f, R * 0.7f, R * 0.36f);
     if (ringed) { ring (false, R * 1.6f, R * 0.33f, -0.18f, 0.7f, 4.0f); if (cat == 3) ring (false, R * 1.85f, R * 0.4f, -0.18f, 0.45f, 2.0f); }
+    for (auto& m : moons) drawMoon (m);
+    if (cat == 7)   // fx: asteroid belt
+        for (int k = 0; k < 26; ++k)
+        {
+            const float a = (float) k / 26.0f * 6.283f + (float) t * 0.12f, rad = R * (1.6f + 0.15f * std::sin ((float) k * 3.1f));
+            const juce::Point<float> p (ctr.x + std::cos (a) * rad, ctr.y + std::sin (a) * rad * 0.25f);
+            if (std::sin (a) < 0 && std::abs (p.x - ctr.x) < R) continue;
+            const float s = 1.5f + 1.5f * (float) ((k * 7) % 3);
+            g.setColour (L.light.withAlpha (0.7f)); g.fillEllipse (p.x - s, p.y - s, s * 2, s * 2);
+        }
+    if (cat == 6 || cat == 9)   // bells: sparkles / botanica: fireflies
+        for (int k = 0; k < (cat == 6 ? 5 : 9); ++k)
+        {
+            const float a = (float) k * 1.7f + (float) t * (cat == 6 ? 0.2f : 0.6f), rad = R * (1.3f + 0.3f * std::sin ((float) k * 2.3f));
+            const juce::Point<float> p (ctr.x + std::cos (a) * rad, ctr.y + std::sin (a * 1.3f) * rad * 0.7f);
+            const float s = (cat == 6 ? 6.0f : 2.5f) * (0.5f + 0.5f * std::sin ((float) t * 3.0f + (float) k));
+            g.setColour (cat == 6 ? juce::Colours::white : C (0xfff6ff9a));
+            if (cat == 6) { juce::Path sp; sp.startNewSubPath (p.x, p.y - s); sp.lineTo (p.x + s * 0.25f, p.y - s * 0.25f); sp.lineTo (p.x + s, p.y); sp.lineTo (p.x + s * 0.25f, p.y + s * 0.25f); sp.lineTo (p.x, p.y + s); sp.lineTo (p.x - s * 0.25f, p.y + s * 0.25f); sp.lineTo (p.x - s, p.y); sp.lineTo (p.x - s * 0.25f, p.y - s * 0.25f); sp.closeSubPath(); g.fillPath (sp); }
+            else g.fillEllipse (p.x - s, p.y - s, s * 2, s * 2);
+        }
+    if (cat == 10)  // chorale: an angel halo above
+    {
+        const auto hc = ctr.translated (0, -R * 1.12f);
+        g.setColour (L.light.withAlpha (0.15f)); g.drawEllipse (hc.x - R * 0.75f, hc.y - R * 0.16f, R * 1.5f, R * 0.32f, 14.0f);
+        g.setColour (L.light.withAlpha (0.9f)); g.drawEllipse (hc.x - R * 0.75f, hc.y - R * 0.16f, R * 1.5f, R * 0.32f, 5.0f);
+    }
     // texts
     const bool darkText = cat == 0 || cat == 1 || cat == 5 || cat == 6 || cat == 8 || cat == 10;
     const auto ink = darkText ? C (0xff14081f) : C (0xfff4ecff);
     g.setColour (ink.withAlpha (0.7f)); g.setFont (LNF::font (10.5f));
     g.drawText (family, juce::Rectangle<float> (R * 1.8f, 14).withCentre (ctr.translated (0, -R * 0.34f)), juce::Justification::centred);
-    g.setColour (ink); g.setFont (LNF::font (21.0f));
+    g.setColour (ink); g.setFont (LNF::font (R > 75.0f ? 21.0f : 17.0f));
     g.drawFittedText (name, juce::Rectangle<float> (R * 1.7f, 50).withCentre (ctr.translated (0, -R * 0.02f)).toNearestInt(), juce::Justification::centred, 2);
     g.setColour (ink.withAlpha (0.6f)); g.setFont (LNF::font (10.0f));
     g.drawText (TK_FR ("▾ tous les sons"), juce::Rectangle<float> (R * 1.6f, 14).withCentre (ctr.translated (0, R * 0.38f)), juce::Justification::centred);

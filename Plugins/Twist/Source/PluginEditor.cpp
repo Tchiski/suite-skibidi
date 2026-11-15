@@ -3,7 +3,7 @@
 using tchk::LNF;
 using namespace twist;
 
-namespace { constexpr int kW = 880, kH = 640; const juce::Rectangle<int> tlArea { 252, 100, 608, 262 }; constexpr int X0 = 252; }
+namespace { constexpr int kW = 880, kH = 650; const juce::Rectangle<int> tlArea { 20, 98, 840, 290 }; constexpr int X0 = 20; }
 
 TwistEditor::TwistEditor (TwistProcessor& p)
     : tchk::ScaledEditor (p, kW, kH, 0.9f, "twist"), audioProcessor (p)
@@ -74,8 +74,8 @@ TwistEditor::TwistEditor (TwistProcessor& p)
     for (juce::Component* c : std::initializer_list<juce::Component*> { &timeline, &scroll, &delB, &sprinkleB, &followB, &magnetB, &badge, &presetBox, &heartButton })
         content.addAndMakeVisible (c);
     layout();
-    addInfo (88, 62, TK_FR ("Choisis un effet, puis glisse sur la timeline.||25 effets fous en 4 familles : TEMPS (tape stop, bullet time, disque rayé...), HACHAGE (rafale, hoquet, bug 8-bit...), VOIX FOLLES (hélium, démon, ascenseur...), ESPACE FOU (toupie, trou noir, fantôme...).|AIMANT : les petits triangles sur la timeline sont les coups du morceau (kick, snare...), repérés pendant la lecture. Les zones se collent dessus.|Mets Twist sur ta piste instru (ou le master). Tu poses des effets à des moments précis : un tape stop avant le refrain, une coupure sur le dernier temps, un filtre qui monte...|POSER : clique un effet, puis glisse sur la timeline à l'endroit voulu.|MODIFIER : clique une zone, règle-la en bas, tire son bord droit pour l'allonger, glisse-la pour la déplacer.|EFFACER : sélectionne la zone et clique Effacer (ou Suppr).|Tout est calé sur les mesures d'Ableton : chaque effet se déclenche pile au bon moment, à chaque lecture et dans l'export (bounce)."), "Twist");
-    addInfo (X0 + 140, 66, TK_FR ("Twist place des effets tout seul.||Il pose de petits effets aux bons endroits : fins de phrases de 4 et 8 mesures, avant les changements de partie (tape stop, coupure, filtre, stutter...). Reclique pour d'autres idées.|L'image du morceau (la forme d'onde) se dessine pendant que tu le joues."), "Saupoudrer");
+    addInfo (90, 542, TK_FR ("Choisis un effet, puis glisse sur la timeline.||25 effets fous en 4 familles : TEMPS (tape stop, bullet time, disque rayé...), HACHAGE (rafale, hoquet, bug 8-bit...), VOIX FOLLES (hélium, démon, ascenseur...), ESPACE FOU (toupie, trou noir, fantôme...).|AIMANT : les petits triangles sur la timeline sont les coups du morceau (kick, snare...), repérés pendant la lecture. Les zones se collent dessus.|Mets Twist sur ta piste instru (ou le master). Tu poses des effets à des moments précis : un tape stop avant le refrain, une coupure sur le dernier temps, un filtre qui monte...|POSER : clique un effet, puis glisse sur la timeline à l'endroit voulu.|MODIFIER : clique une zone, règle-la en bas, tire son bord droit pour l'allonger, glisse-la pour la déplacer.|EFFACER : sélectionne la zone et clique Effacer (ou Suppr).|Tout est calé sur les mesures d'Ableton : chaque effet se déclenche pile au bon moment, à chaque lecture et dans l'export (bounce)."), "Twist");
+    addInfo (332, 64, TK_FR ("Twist place des effets tout seul.||Il pose de petits effets aux bons endroits : fins de phrases de 4 et 8 mesures, avant les changements de partie (tape stop, coupure, filtre, stutter...). Reclique pour d'autres idées.|L'image du morceau (la forme d'onde) se dessine pendant que tu le joues."), "Saupoudrer");
     finishSetup (71, { { 260, 14, 40 }, { 340, 30, 28 }, { 560, 12, 34 } });
     refreshFromState();
     select (-1);
@@ -86,57 +86,61 @@ TwistEditor::~TwistEditor() { stopTimer(); scroll.removeListener (this); }
 
 void TwistEditor::layout()
 {
-    // left column: the effects by family, two per row
-    int y = 84, col = 0, fam = 0;
-    for (int i = 0; i < fxChips.size(); ++i)
+    // bottom: the effects by family, side by side (3 columns for TEMPS, 2 for the others)
+    int fx = 20;
+    for (size_t f = 0; f < families().size(); ++f)
     {
-        if (fam < (int) families().size() && families()[(size_t) fam].first == i) { if (col == 1) y += 30; y += (fam == 0 ? 0 : 6) + 16; col = 0; ++fam; }
-        fxChips[i]->setBounds (18 + col * 112, y, 108, 26);
-        if (++col == 2) { col = 0; y += 30; }
+        const int first = families()[f].first, last = f + 1 < families().size() ? families()[f + 1].first : NumFx;
+        const int cols = f == 0 ? 3 : 2;
+        for (int i = first; i < last; ++i)
+        {
+            const int k = i - first;
+            fxChips[i]->setBounds (fx + (k % cols) * 88, 562 + (k / cols) * 28, 84, 25);
+        }
+        fx += cols * 88 + 10;
     }
-    sprinkleB.setBounds (X0, 58, 130, 32);
-    for (int i = 0; i < 3; ++i) densChips[i]->setBounds (X0 + 164 + i * 58, 60, 54, 28);
-    magnetB.setBounds (700, 60, 160, 28);
+    sprinkleB.setBounds (20, 58, 130, 32);
+    for (int i = 0; i < 3; ++i) densChips[i]->setBounds (156 + i * 58, 60, 54, 28);
+    for (int i = 0; i < zoomChips.size(); ++i) zoomChips[i]->setBounds (420 + i * 40, 62, 36, 24);
+    followB.setBounds (584, 62, 120, 24);
+    magnetB.setBounds (712, 60, 148, 28);
     timeline.setBounds (tlArea);
-    scroll.setBounds (tlArea.getX() + 8, tlArea.getBottom() + 4, tlArea.getWidth() - 16, 10);
-    for (int i = 0; i < zoomChips.size(); ++i) zoomChips[i]->setBounds (X0 + 320 + i * 42, 384, 38, 22);
-    followB.setBounds (X0 + 470, 382, 138, 24);
-    amount.setBounds (X0 + 330, 446, 86, 86); curve.setBounds (X0 + 420, 446, 86, 86); mix.setBounds (X0 + 510, 446, 86, 86);
-    delB.setBounds (X0 + 16, 540, 90, 26);
-    badge.setBounds (X0, 590, 190, 38);
-    heartButton.setBounds (X0 + 376, 596, 26, 26);
-    presetBox.setBounds (X0 + 408, 596, 200, 26);
+    scroll.setBounds (tlArea.getX() + 8, tlArea.getBottom() + 3, tlArea.getWidth() - 16, 9);
+    amount.setBounds (X0 + 320, 424, 76, 80); curve.setBounds (X0 + 396, 424, 76, 80); mix.setBounds (X0 + 472, 424, 76, 80);
+    delB.setBounds (X0 + 12, 502, 80, 24);
+    badge.setBounds (600, 410, 260, 40);
+    heartButton.setBounds (600, 462, 26, 26);
+    presetBox.setBounds (632, 462, 228, 26);
 }
 
 void TwistEditor::paintContent (juce::Graphics& g)
 {
     paintBackgroundAndHeader (g, "Twist", {});
-    g.setColour (LNF::textDim); g.setFont (LNF::font (12.0f));
-    g.drawText ("EFFETS", 18, 62, 70, 18, juce::Justification::centredLeft);
     for (auto& [first, name] : families())
     {
-        g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (LNF::font (9.5f));
-        g.drawText (name, 18, fxChips[first]->getY() - 16, 200, 14, juce::Justification::centredLeft);
+        g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (LNF::font (9.5f));
+        g.drawText (name, fxChips[first]->getX(), 544, 200, 14, juce::Justification::centredLeft);
     }
-    g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
-    g.drawText ("MESURES", X0 + 250, 387, 66, 16, juce::Justification::centredRight);
-    drawPanelT (g, { X0, 414, 608, 164 }, coral);
-    g.drawText (TK_FR ("INTENSITÉ"), X0 + 330, 432, 86, 14, juce::Justification::centred);
-    g.drawText ("COURBE", X0 + 420, 432, 86, 14, juce::Justification::centred);
-    g.drawText ("MIX", X0 + 510, 432, 86, 14, juce::Justification::centred);
+    g.setColour (LNF::textDim); g.setFont (LNF::font (10.0f));
+    g.drawText ("MESURES", 340, 66, 76, 16, juce::Justification::centredRight);
+    drawPanelT (g, { X0, 404, 568, 128 }, coral);
+    g.setColour (LNF::textDim); g.setFont (LNF::font (10.0f));
+    g.drawText (TK_FR ("INTENSITÉ"), X0 + 320, 412, 76, 14, juce::Justification::centred);
+    g.drawText ("COURBE", X0 + 396, 412, 76, 14, juce::Justification::centred);
+    g.drawText ("MIX", X0 + 472, 412, 76, 14, juce::Justification::centred);
 }
 
 void TwistEditor::overContent (juce::Graphics& g)
 {
-    const juce::Rectangle<float> badgeR ((float) X0 + 16, 430, 60, 60);
+    const juce::Rectangle<float> badgeR ((float) X0 + 14, 418, 56, 56);
     if (selected < 0 || selected >= (int) zones.size())
     {
         g.setColour (juce::Colours::white.withAlpha (0.08f)); g.fillEllipse (badgeR);
         g.setColour (LNF::textDim); g.setFont (LNF::font (24.0f)); g.drawText ("?", badgeR, juce::Justification::centred);
         g.setFont (LNF::font (15.0f));
-        g.drawText (TK_FR ("Aucune zone choisie"), X0 + 90, 430, 230, 22, juce::Justification::centredLeft);
+        g.drawText (TK_FR ("Aucune zone choisie"), X0 + 84, 416, 230, 22, juce::Justification::centredLeft);
         g.setFont (LNF::font (11.5f, false));
-        g.drawFittedText (TK_FR ("Clique une zone sur la timeline pour la régler, ou glisse pour en poser une nouvelle."), X0 + 90, 456, 230, 50, juce::Justification::topLeft, 3);
+        g.drawFittedText (TK_FR ("Clique une zone sur la timeline pour la régler, ou glisse pour en poser une nouvelle."), X0 + 84, 440, 230, 50, juce::Justification::topLeft, 3);
         return;
     }
     const auto& z = zones[(size_t) selected];
@@ -146,12 +150,12 @@ void TwistEditor::overContent (juce::Graphics& g)
     g.setColour (juce::Colour (0xff14081f)); g.setFont (LNF::font (24.0f));
     g.drawText (fxNames()[z.fx].substring (0, 1), badgeR, juce::Justification::centred);
     g.setColour (c); g.setFont (LNF::font (16.0f));
-    g.drawText (fxNames()[z.fx], X0 + 90, 428, 230, 22, juce::Justification::centredLeft);
+    g.drawText (fxNames()[z.fx], X0 + 84, 414, 230, 22, juce::Justification::centredLeft);
     const int bar = (int) (z.start / 4.0) + 1; const double bt = std::fmod (z.start, 4.0) + 1.0;
     g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
-    g.drawText (TK_FR ("mesure ") + juce::String (bar) + ", temps " + juce::String (bt, bt == std::floor (bt) ? 0 : 2) + " · " + juce::String (z.end - z.start, 2) + " temps", X0 + 90, 450, 230, 16, juce::Justification::centredLeft);
+    g.drawText (TK_FR ("mesure ") + juce::String (bar) + ", temps " + juce::String (bt, bt == std::floor (bt) ? 0 : 2) + " · " + juce::String (z.end - z.start, 2) + " temps", X0 + 84, 436, 230, 16, juce::Justification::centredLeft);
     g.setFont (LNF::font (11.5f, false));
-    g.drawFittedText (fxHelp()[z.fx], X0 + 90, 470, 230, 50, juce::Justification::topLeft, 3);
+    g.drawFittedText (fxHelp()[z.fx], X0 + 84, 454, 230, 48, juce::Justification::topLeft, 3);
 }
 
 void TwistEditor::refreshFromState()
