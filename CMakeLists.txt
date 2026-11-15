@@ -37,4 +37,5 @@ add_subdirectory(Plugins/Clean)
 add_subdirectory(Plugins/Accords)
 add_subdirectory(Plugins/Synth)
 add_subdirectory(Plugins/Basse)
+add_subdirectory(Plugins/Twist)
 # Next ones: add_subdirectory(Plugins/Distortion), Plugins/Filter, ...
