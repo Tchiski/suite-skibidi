@@ -98,24 +98,27 @@ jobs:
           name: installer-${{ matrix.name }}
           path: dist
 
-  # ---------- Put the installers on the repo's "Releases" page ----------
-  release:
-    needs: build
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: out
-          merge-multiple: true
-
-      - name: Publish latest release
+      # ---------- Releases page: the Mac installer is published as soon as it is ready (about 15 min),
+      # ---------- the Windows one is added to the same release when its (longer) build is done
+      - name: Publish (macOS)
+        if: runner.os == 'macOS'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ls -la out
           gh release delete latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
           sleep 3
-          gh release create latest out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create latest dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Tchiskibidi Suite - derniere version" \
             --notes "Mac : telecharge Tchiskibidi-Installer-macOS.pkg. Windows : telecharge Tchiskibidi-Installer-Windows.exe. Double-clique et suis les etapes."
+
+      - name: Publish (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 60); do
+            t=$(gh release view latest --repo "$GITHUB_REPOSITORY" --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+            [ "$t" = "$GITHUB_SHA" ] && break
+            sleep 30
+          done
+          gh release upload latest dist/* --repo "$GITHUB_REPOSITORY" --clobber

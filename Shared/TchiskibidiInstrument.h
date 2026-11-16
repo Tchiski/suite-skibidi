@@ -388,6 +388,13 @@ public:
         rp.wetLevel = juce::jlimit (0.0f, 1.0f, patch.space) * 0.4f; rp.dryLevel = 1.0f - juce::jlimit (0.0f, 1.0f, patch.space) * 0.2f; rp.width = 1.0f; rp.freezeMode = 0.0f;
         reverb.setParameters (rp);
         if (any || patch.space > 0.01f) reverb.processStereo (tmpL.data(), tmpR.data(), n);
+        // protection 3: no note for 4 s but still sound coming out = a ghost in the effects: reset them
+        idle = any ? 0 : idle + n;
+        if (idle > (int) (4.0f * sr))
+        {
+            float m = 0; for (int i = 0; i < n; ++i) m = juce::jmax (m, std::abs (tmpL[(size_t) i]), std::abs (tmpR[(size_t) i]));
+            if (m > 0.02f) { reverb.reset(); if (! chL.empty()) { std::fill (chL.begin(), chL.end(), 0.0f); std::fill (chR.begin(), chR.end(), 0.0f); } ++guardTrips; lastDiag = {}; lastDiag.sampleRate = sr; lastDiag.rms = m; lastDiag.blockSize = -1; }
+        }
         // protection 1: a loud, noise-like sound (many zero crossings) that the patch does not ask for = a fault.
         // Everything is reset at once and the block is muted (it never reaches the speakers).
         {
@@ -457,7 +464,7 @@ private:
     }
     std::vector<float> chL, chR;
     int chW = 0; float chPh = 0;
-    int burst = 0; float limEnv = 0;
+    int burst = 0, idle = 0; float limEnv = 0;
     std::array<Voice, numVoices> voices;
     juce::Reverb reverb;
     std::vector<float> tmpL, tmpR;
