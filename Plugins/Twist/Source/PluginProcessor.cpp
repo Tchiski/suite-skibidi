@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "TchiskibidiDSP.h"
 #include "PluginEditor.h"
 
 using namespace twist;
@@ -305,6 +306,7 @@ void TwistProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     activeZone = curZone;
     outputPeakDb = tchk::gainToDb (pk);
+    if (tchk::sanitize (buffer)) { hist.clear(); lp.reset(); hp.reset(); ghostVerb.reset(); curZone = -1; }
 }
 
 void TwistProcessor::getStateInformation (juce::MemoryBlock& dest)

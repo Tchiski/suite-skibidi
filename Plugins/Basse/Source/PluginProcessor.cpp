@@ -10,6 +10,7 @@ BasseProcessor::BasseProcessor() : tchk::InstrumentProcessor (false), apvts (*th
     apvts.state.setProperty ("bars", 4, nullptr);
     apvts.state.setProperty ("style", 0, nullptr);
     apvts.state.setProperty ("follow", 0, nullptr);
+    synth.outputGain = 0.75f;   // heavy sub + octave layer: keep it below 0 dB
     generate();
     startTimerHz (8);
 }
@@ -21,6 +22,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout BasseProcessor::createLayout
     l.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "length", 1 }, "Longueur", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct()));
     l.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "glide", 1 }, "Glide", juce::NormalisableRange<float> (0.0f, 1.0f), 0.35f, pct()));
     l.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "dist", 1 }, "Distorsion", juce::NormalisableRange<float> (0.0f, 1.0f), 0.1f, pct()));
+    l.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "sub", 1 }, "Sub", juce::NormalisableRange<float> (0.0f, 1.0f), 0.4f, pct()));
+    l.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "slides", 1 }, "Glissandos", juce::NormalisableRange<float> (0.0f, 1.0f), 0.3f, pct()));
     l.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "volume", 1 }, "Volume", juce::NormalisableRange<float> (0.0f, 1.0f), 0.7f, pct()));
     return l;
 }
@@ -43,13 +46,13 @@ void BasseProcessor::generate (const std::vector<tchk::gen::ChordEvent>* chords)
     juce::StringArray s;
     for (auto& c : ch) s.add (juce::String (c.degree) + ":" + juce::String (c.start) + ":" + juce::String (c.length));
     apvts.state.setProperty ("chords", s.joinIntoString (";"), nullptr);
-    setNotes (tchk::gen::generateBass (getInt ("root", 9), getInt ("scale", 1), bars, getInt ("style", 0), ch, rng));
+    setNotes (tchk::gen::generateBass (getInt ("root", 9), getInt ("scale", 1), bars, getInt ("style", 0), ch, rng, apvts.getRawParameterValue ("slides")->load()));
 }
 
 tchk::Patch BasseProcessor::currentPatch()
 {
     auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
-    auto p = tchk::sounds::bassPatch ((int) v ("sound"), v ("length"), v ("glide"), v ("dist"));
+    auto p = tchk::sounds::bassPatch ((int) v ("sound"), v ("length"), v ("glide"), v ("dist"), v ("sub"));
     p.level *= v ("volume") / 0.7f;
     return p;
 }

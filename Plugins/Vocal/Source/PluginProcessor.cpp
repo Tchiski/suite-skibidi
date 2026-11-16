@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "TchiskibidiDSP.h"
 #include "PluginEditor.h"
 
 using namespace tchk;
@@ -417,6 +418,7 @@ void VocalProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     for (int ch = 0; ch < numCh; ++ch) outPk = juce::jmax (outPk, buffer.getMagnitude (ch, 0, n));
     outputPeakDb = gainToDb (outPk, -100.0f);
+    tchk::sanitize (buffer);
 }
 
 juce::AudioProcessorEditor* VocalProcessor::createEditor() { return new VocalEditor (*this); }

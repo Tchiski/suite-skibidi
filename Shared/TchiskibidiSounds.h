@@ -174,40 +174,52 @@ inline Patch chordPatch (int i)
     }
 }
 
-// Basse: 16 sounds
+// Basse: 24 sounds. Every one has a strong sine at the note (the sub you feel), the "Sub" knob adds a layer
+// one octave below (infra-bass), "Distorsion" adds harmonics so the bass is heard on small speakers too.
 inline const juce::StringArray& bassSoundNames()
 {
     static const juce::StringArray n { "808 Profonde", "808 Courte", "808 Distordue", "808 Drill", "808 Punch", TK_FR ("808 Géante"), "Sub Rond", "Sub Doux",
-                                       "Reese", "Moog Chaud", "Basse Funk", "Basse Pluck", "Acid", "Wobble", "Basse Afro", "Basse House" };
+                                       "Reese", "Moog Chaud", "Basse Funk", "Basse Pluck", "Acid", "Wobble", "Basse Afro", "Basse House",
+                                       "808 Tsunami", "Sub Abyssal", "808 Glissade", TK_FR ("Basse Rêve"), "808 Cristal", "Sub Pulse", TK_FR ("Basse Néon"), TK_FR ("808 Montée") };
     return n;
 }
-inline Patch bassPatch (int i, float length, float glide, float dist)
+inline Patch bassPatch (int i, float length, float glide, float dist, float subAmt = 0.4f)
 {
-    Patch p; p.mono = true; p.space = 0.02f; p.width = 0.15f; p.level = 0.8f; p.saw = 0;
+    Patch p; p.mono = true; p.space = 0.0f; p.width = 0.1f; p.level = 0.95f; p.saw = 0; p.reso = 0.1f;
     const float lenK = 0.35f + length * 1.3f;
-    auto eight08 = [&] (float dec, float drive, float clickAmt)
-    { p.sine = 1; p.pitchEnv = 7; p.pitchDecay = 0.035f; p.A = 0.003f; p.D = dec * lenK; p.S = 0; p.R = 0.08f; p.cutoff = 8000; p.fenv = 0; p.drive = drive; p.click = clickAmt; };
+    auto eight08 = [&] (float dec, float drive, float clickAmt, float boom = 7.0f)
+    { p.sine = 1; p.pitchEnv = boom; p.pitchDecay = 0.04f; p.A = 0.002f; p.D = dec * lenK; p.S = 0; p.R = 0.12f; p.cutoff = 9000; p.fenv = 0; p.drive = drive; p.click = clickAmt; };
+    auto withBody = [&] (float sine) { p.sine = sine; };   // the sub you feel, under the synth tone
     switch (i)
     {
-        case 0: eight08 (1.3f, 0.15f, 0.15f); break;
-        case 1: eight08 (0.4f, 0.15f, 0.2f); break;
-        case 2: eight08 (1.1f, 0.65f, 0.1f); break;
-        case 3: eight08 (1.2f, 0.3f, 0.1f); break;
-        case 4: eight08 (0.8f, 0.4f, 0.6f); break;
-        case 5: eight08 (2.0f, 0.25f, 0.1f); break;
-        case 6: p.sine = 1; p.A = 0.008f; p.D = 0.3f; p.S = 0.6f + 0.4f * length; p.R = 0.12f; p.cutoff = 8000; p.fenv = 0; break;
-        case 7: p.tri = 1; p.A = 0.01f; p.D = 0.3f; p.S = 0.8f; p.R = 0.15f; p.cutoff = 380; p.fenv = 0.3f; break;
-        case 8: p.saw = 1; p.unison = 3; p.detune = 18; p.sub = 0.6f; p.cutoff = 900; p.reso = 0.2f; p.fenv = 0.5f; p.A = 0.005f; p.S = 0.9f; p.R = 0.15f; break;
-        case 9: p.saw = 1; p.sub = 0.3f; p.cutoff = 650; p.reso = 0.35f; p.fenv = 2.0f; p.fA = 0.001f; p.fD = 0.25f; p.fS = 0.2f; p.drive = 0.25f; p.A = 0.003f; p.S = 0.9f; p.R = 0.12f; break;
-        case 10: p.square = 1; p.cutoff = 900; p.fenv = 3; p.fA = 0.001f; p.fD = 0.15f; p.fS = 0.1f; p.A = 0.002f; p.D = 0.3f * lenK; p.S = 0.1f; p.R = 0.08f; break;
-        case 11: p.saw = 1; p.cutoff = 700; p.fenv = 4; p.fA = 0.001f; p.fD = 0.12f; p.fS = 0; p.A = 0.002f; p.D = 0.25f * lenK; p.S = 0; p.R = 0.08f; break;
-        case 12: p.saw = 1; p.cutoff = 500; p.reso = 0.85f; p.fenv = 4.5f; p.fA = 0.001f; p.fD = 0.2f; p.fS = 0.05f; p.A = 0.002f; p.D = 0.35f * lenK; p.S = 0.3f; p.R = 0.08f; break;
-        case 13: p.saw = 1; p.sub = 0.5f; p.cutoff = 400; p.reso = 0.5f; p.lfoFilter = 1.6f; p.lfoRate = 4.0f; p.drive = 0.35f; p.A = 0.005f; p.S = 1; p.R = 0.12f; break;
-        case 14: p.tri = 1; p.sine = 0.5f; p.cutoff = 1200; p.fenv = 1; p.fA = 0.001f; p.fD = 0.2f; p.fS = 0.3f; p.A = 0.002f; p.D = 0.4f * lenK; p.S = 0.2f; p.R = 0.1f; break;
-        default: p.square = 1; p.cutoff = 1100; p.fenv = 2; p.fA = 0.001f; p.fD = 0.12f; p.fS = 0.1f; p.A = 0.002f; p.D = 0.22f * lenK; p.S = 0.05f; p.R = 0.06f; break;
+        case 0: eight08 (1.4f, 0.25f, 0.15f); break;
+        case 1: eight08 (0.45f, 0.25f, 0.25f); break;
+        case 2: eight08 (1.2f, 0.7f, 0.1f); break;
+        case 3: eight08 (1.3f, 0.35f, 0.1f); break;
+        case 4: eight08 (0.9f, 0.45f, 0.6f, 10.0f); break;
+        case 5: eight08 (2.2f, 0.3f, 0.1f, 9.0f); break;
+        case 6: p.sine = 1; p.A = 0.006f; p.D = 0.3f; p.S = 0.7f + 0.3f * length; p.R = 0.14f; p.cutoff = 9000; p.fenv = 0; p.drive = 0.12f; break;
+        case 7: p.sine = 1; p.tri = 0.35f; p.A = 0.01f; p.D = 0.3f; p.S = 0.85f; p.R = 0.18f; p.cutoff = 600; p.fenv = 0.2f; break;
+        case 8: withBody (0.8f); p.saw = 0.6f; p.unison = 3; p.detune = 16; p.cutoff = 800; p.reso = 0.2f; p.fenv = 0.5f; p.A = 0.005f; p.S = 0.9f; p.R = 0.15f; p.drive = 0.15f; break;
+        case 9: withBody (0.7f); p.saw = 0.7f; p.cutoff = 600; p.reso = 0.3f; p.fenv = 1.8f; p.fA = 0.001f; p.fD = 0.25f; p.fS = 0.2f; p.drive = 0.25f; p.A = 0.003f; p.S = 0.9f; p.R = 0.12f; break;
+        case 10: withBody (0.7f); p.square = 0.6f; p.cutoff = 900; p.fenv = 2.5f; p.fA = 0.001f; p.fD = 0.15f; p.fS = 0.1f; p.A = 0.002f; p.D = 0.3f * lenK; p.S = 0.15f; p.R = 0.08f; break;
+        case 11: withBody (0.7f); p.saw = 0.6f; p.cutoff = 700; p.fenv = 3.5f; p.fA = 0.001f; p.fD = 0.12f; p.fS = 0; p.A = 0.002f; p.D = 0.28f * lenK; p.S = 0.05f; p.R = 0.08f; break;
+        case 12: withBody (0.6f); p.saw = 0.7f; p.cutoff = 500; p.reso = 0.7f; p.fenv = 4.0f; p.fA = 0.001f; p.fD = 0.2f; p.fS = 0.05f; p.A = 0.002f; p.D = 0.35f * lenK; p.S = 0.3f; p.R = 0.08f; break;
+        case 13: withBody (0.8f); p.saw = 0.6f; p.cutoff = 420; p.reso = 0.45f; p.lfoFilter = 1.5f; p.lfoRate = 4.0f; p.drive = 0.3f; p.A = 0.005f; p.S = 1; p.R = 0.12f; break;
+        case 14: withBody (0.9f); p.tri = 0.6f; p.cutoff = 1200; p.fenv = 1; p.fA = 0.001f; p.fD = 0.2f; p.fS = 0.3f; p.A = 0.002f; p.D = 0.45f * lenK; p.S = 0.2f; p.R = 0.1f; break;
+        case 15: withBody (0.8f); p.square = 0.5f; p.cutoff = 1100; p.fenv = 2; p.fA = 0.001f; p.fD = 0.12f; p.fS = 0.1f; p.A = 0.002f; p.D = 0.24f * lenK; p.S = 0.08f; p.R = 0.06f; break;
+        case 16: eight08 (2.6f, 0.45f, 0.2f, 12.0f); p.sub = 0.3f; break;                         // 808 Tsunami
+        case 17: p.sine = 1; p.A = 0.01f; p.D = 0.3f; p.S = 1; p.R = 0.2f; p.cutoff = 9000; p.fenv = 0; p.sub = 0.5f; p.drive = 0.08f; break;   // Sub Abyssal
+        case 18: eight08 (1.6f, 0.3f, 0.1f); p.glide = 0.12f; break;                              // 808 Glissade (always slides)
+        case 19: withBody (0.9f); p.tri = 0.5f; p.cutoff = 700; p.fenv = 0.6f; p.A = 0.02f; p.D = 0.6f; p.S = 0.8f; p.R = 0.3f; p.chorus = 0.5f; p.vibrato = 0.05f; p.lfoRate = 5.0f; break; // Basse Rêve
+        case 20: eight08 (1.2f, 0.2f, 0.9f, 14.0f); break;                                        // 808 Cristal
+        case 21: p.sine = 1; p.A = 0.005f; p.S = 1; p.R = 0.12f; p.cutoff = 9000; p.fenv = 0; p.lfoFilter = 0; p.vibrato = 0.0f; p.tri = 0.25f; p.drive = 0.2f; break; // Sub Pulse
+        case 22: withBody (0.8f); p.square = 0.45f; p.saw = 0.3f; p.cutoff = 1500; p.reso = 0.35f; p.fenv = 1.5f; p.fA = 0.001f; p.fD = 0.3f; p.fS = 0.3f; p.A = 0.003f; p.S = 0.8f; p.R = 0.1f; p.drive = 0.2f; break; // Basse Néon
+        default: eight08 (1.5f, 0.3f, 0.1f, -10.0f); p.pitchDecay = 0.12f; break;                  // 808 Montée: rises into the note
     }
-    p.glide = 0.02f + glide * 0.22f;
+    if (i != 18) p.glide = 0.02f + glide * 0.22f; else p.glide = juce::jmax (0.08f, 0.02f + glide * 0.22f);
     p.drive = juce::jlimit (0.0f, 1.0f, p.drive + dist * 0.9f);
+    p.sub = juce::jlimit (0.0f, 1.0f, p.sub + subAmt * 0.7f);
     return p;
 }
 } // namespace sounds

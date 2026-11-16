@@ -497,4 +497,19 @@ struct DelayLine
     }
 };
 
+
+// Safety net at the end of every processBlock: a broken value (NaN, infinity, absurd level)
+// never reaches the speakers; the block is muted instead. Returns true when it had to act.
+inline bool sanitize (juce::AudioBuffer<float>& b)
+{
+    bool bad = false;
+    for (int c = 0; c < b.getNumChannels() && ! bad; ++c)
+    {
+        const float* d = b.getReadPointer (c);
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            if (! std::isfinite (d[i]) || std::abs (d[i]) > 8.0f) { bad = true; break; }
+    }
+    if (bad) b.clear();
+    return bad;
+}
 } // namespace tchk

@@ -14,7 +14,7 @@ private:
     void timerCallback() override;
     void paintContent (juce::Graphics& g);
     void layout();
-    void regenerate (const std::vector<int>* avoid = nullptr);
+    void regenerate (const std::vector<int>* avoid = nullptr, bool keepHistory = true);
     void refreshFromState();
     void openListen();
     void analyseListen();
@@ -26,6 +26,9 @@ private:
     juce::OwnedArray<tchk::Chip> scaleChips, barChips, moodChips;
     tchk::Chip seventh { TK_FR ("Accords à 4 notes (7e)"), gold }, listen { TK_FR ("◎ Écouter mes pistes"), gold };
     tchk::Star3D star;
+    tchk::Chip undoB { TK_FR ("↶ Revenir"), gold };
+    std::vector<juce::ValueTree> history;
+    void pushHistory();
     tchk::PianoRoll roll;
     tchk::TransportBadge badge;
     tchk::DragOut dragMidi, dragAudio;

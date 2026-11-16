@@ -170,7 +170,7 @@ inline int bassPitch (int root, int scaleIdx, int degree, int off)
     return music::degreePitch (root, scaleIdx, degree + off, base);
 }
 
-inline std::vector<SeqNote> generateBass (int root, int scaleIdx, int bars, int style, const std::vector<ChordEvent>& chords, juce::Random& r)
+inline std::vector<SeqNote> generateBass (int root, int scaleIdx, int bars, int style, const std::vector<ChordEvent>& chords, juce::Random& r, float slides = 0.3f)
 {
     auto degreeAt = [&] (int step) { for (auto& c : chords) if (step >= c.start && step < c.start + c.length) return c.degree; return chords.empty() ? 0 : chords.back().degree; };
     const auto& tpls = bassTemplates (style);
@@ -184,7 +184,10 @@ inline std::vector<SeqNote> generateBass (int root, int scaleIdx, int bars, int 
             if (h.off == 99) p = bassPitch (root, scaleIdx, degreeAt (bar * 16 + 16), 0) + (r.nextBool() ? -1 : 2);
             else p = bassPitch (root, scaleIdx, deg, h.off);
             if (style == 0 && r.nextFloat() < 0.12f) p += 12;
-            SeqNote n; n.pitch = p; n.start = s; n.length = h.l; n.glide = h.glide != 0; n.velocity = 0.9f;
+            // glissandos: more notes slide in from the previous one, sometimes with an octave leap
+            bool gl = h.glide != 0 || (! out.empty() && r.nextFloat() < slides * 0.55f);
+            if (gl && slides > 0.6f && r.nextFloat() < (slides - 0.6f)) p += r.nextBool() ? 12 : -5;
+            SeqNote n; n.pitch = juce::jlimit (24, 60, p); n.start = s; n.length = h.l; n.glide = gl && ! out.empty(); n.velocity = 0.9f;
             out.push_back (n);
         }
     std::sort (out.begin(), out.end(), [] (const SeqNote& x, const SeqNote& y) { return x.start < y.start; });

@@ -18,27 +18,38 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     content.layoutFn = [this] { layout(); };
     levelDb = [&p] { return p.peakDb.load(); };
 
-    keyWheel.onPick = [this] (int i) { audioProcessor.setInt ("root", i); regenerate(); };
+    keyWheel.onPick = [this] (int i) { pushHistory(); audioProcessor.setInt ("root", i); regenerate (nullptr, false); };
     for (int i = 0; i < music::scaleNames().size(); ++i)
     {
         auto* c = scaleChips.add (new tchk::Chip (music::scaleNames()[i], gold)); c->fontSize = 11.5f;
-        c->onClick = [this, i] { audioProcessor.setInt ("scale", i); regenerate(); };
+        c->onClick = [this, i] { pushHistory(); audioProcessor.setInt ("scale", i); regenerate (nullptr, false); };
     }
     for (int b : { 4, 8 })
     {
         auto* c = barChips.add (new tchk::Chip (juce::String (b) + " MESURES", gold));
-        c->onClick = [this, b] { audioProcessor.setInt ("bars", b); regenerate(); };
+        c->onClick = [this, b] { pushHistory(); audioProcessor.setInt ("bars", b); regenerate (nullptr, false); };
     }
     for (int i = 0; i < tchk::gen::moodNames().size(); ++i)
     {
         auto* c = moodChips.add (new tchk::Chip (tchk::gen::moodNames()[i], gold));
-        c->onClick = [this, i] { audioProcessor.setInt ("mood", i); regenerate(); };
+        c->onClick = [this, i] { pushHistory(); audioProcessor.setInt ("mood", i); regenerate (nullptr, false); };
     }
-    seventh.onClick = [this] { audioProcessor.setInt ("seventh", audioProcessor.getInt ("seventh", 0) ? 0 : 1); regenerate(); };
+    seventh.onClick = [this] { pushHistory(); audioProcessor.setInt ("seventh", audioProcessor.getInt ("seventh", 0) ? 0 : 1); regenerate (nullptr, false); };
     listen.outline = true;
     listen.onClick = [this] { openListen(); };
     star.accent = gold;
     star.onClick = [this] { regenerate(); };
+    undoB.fontSize = 10.5f; undoB.setEnabled (false);
+    undoB.onClick = [this]
+    {
+        if (history.empty()) return;
+        const auto snap = history.back(); history.pop_back();
+        for (auto* id : { "notes", "root", "scale", "bars", "mood", "seventh" }) audioProcessor.apvts.state.setProperty (id, snap.getProperty (id), nullptr);
+        audioProcessor.setNotes (audioProcessor.getNotes());
+        undoB.setEnabled (! history.empty());
+        star.pop();
+        refreshFromState();
+    };
 
     roll.accent = gold;
     roll.newLength = 8;
@@ -60,14 +71,15 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     {
         audioProcessor.setInt ("root", heardRoot);
         audioProcessor.setInt ("scale", heardMinor ? 1 : 0);
-        regenerate (&heardDegrees);
+        pushHistory();
+        regenerate (&heardDegrees, false);
         audioProcessor.stopListening();
         panel.setVisible (false);
     };
     closeListen.onClick = [this] { audioProcessor.stopListening(); panel.setVisible (false); };
     for (auto* c : { &srcMidi, &srcAudio, &genMatch, &closeListen }) panel.addAndMakeVisible (c);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &keyWheel, &seventh, &listen, &star, &roll, &badge, &dragMidi, &dragAudio, &soundBox, &volume, &presetBox, &heartButton })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &keyWheel, &seventh, &listen, &star, &undoB, &roll, &badge, &dragMidi, &dragAudio, &soundBox, &volume, &presetBox, &heartButton })
         content.addAndMakeVisible (c);
     for (auto* arr : { &scaleChips, &barChips, &moodChips }) for (auto* c : *arr) content.addAndMakeVisible (c);
     content.addChildComponent (panel);
@@ -78,7 +90,7 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     addInfo (742, 64, TK_FR ("4 ou 8 mesures.||En 8 mesures, la deuxième moitié répond à la première et finit souvent sur une tension pour relancer la boucle."), "Mesures");
     addInfo (750, 124, TK_FR ("Le style des accords.||L'ambiance change les enchaînements ET le rythme : Trap ajoute des coups courts, R&B coupe les mesures en deux, Rêveur garde des accords longs."), "Ambiance");
     addInfo (844, 296, TK_FR ("Branche ta piste, joue-la, il trouve des accords qui vont avec.||EN MIDI (le plus fiable) : sur la piste Accords, règle « MIDI From » sur ta piste de piano ou de synthé.|EN AUDIO : dans le menu Sidechain en haut du plugin (Ableton), choisis ta piste. Marche sur un sample, moins précis avec batterie ou grosse basse.|ENSUITE : lance la lecture, joue 4 ou 8 mesures, il trouve la tonalité et les accords. Clique « Générer une progression qui matche » : nouvelle progression dans la même tonalité, sans copier la tienne."), TK_FR ("Écouter mes pistes"));
-    addInfo (472, 610, TK_FR ("Corrige les notes à la main.||Clic dans le vide = ajouter une note. Glisser dans le vide = sélection multiple. Clic sur une note = la sélectionner, re-clic = l'effacer. Bord droit = allonger. Suppr = effacer la sélection. Cmd + A = tout sélectionner.|LECTURE : pas de bouton Écouter. Accords joue avec Ableton (barre d'espace) et recommence pile au début de ta boucle. Clique l'étoile pendant la lecture : la nouvelle progression prend le relais.|GLISSER : fais glisser le MIDI sur une piste MIDI, ou l'audio sur une piste audio."), "Grille MIDI");
+    addInfo (472, 610, TK_FR ("Corrige les notes à la main.||Clic dans le vide = ajouter une note. Glisser dans le vide = sélection multiple. Clic sur une note = la sélectionner, re-clic = l'effacer. Bord droit = allonger. Suppr = effacer la sélection. Cmd + A = tout sélectionner.|LECTURE : pas de bouton Écouter. Accords joue avec Ableton (barre d'espace) et recommence pile au début de ta boucle. Clique l'étoile pendant la lecture : la nouvelle progression prend le relais.|↶ REVENIR (sous l'étoile) : remet la progression d'avant.|GLISSER : fais glisser le MIDI sur une piste MIDI, ou l'audio sur une piste audio."), "Grille MIDI");
     addInfo (606, 382, TK_FR ("Le son des accords.||Choisis le son joué par Accords. « Muet » : Accords n'envoie que le MIDI, pour jouer tes accords avec un autre instrument (sur l'autre piste, règle « MIDI From » sur la piste Accords)."), "Son");
     finishSetup (31, { { 250, 14, 40 }, { 330, 32, 28 }, { 560, 12, 36 } });
     refreshFromState();
@@ -98,6 +110,7 @@ void AccordsEditor::layout()
         scaleChips[i]->setBounds (x, y, sw[i], 28); x += sw[i] + 4;
     }
     star.setBounds (310, 48, 320, 320);
+    undoB.setBounds (548, 352, 82, 22);
     soundBox.setBounds (330, 384, 170, 26);
     volume.setBounds (516, 362, 86, 72);
     barChips[0]->setBounds (650, 84, 104, 30); barChips[1]->setBounds (760, 84, 104, 30);
@@ -130,8 +143,16 @@ void AccordsEditor::paintContent (juce::Graphics& g)
     dim (TK_FR ("Grille MIDI : modifie les notes à la main"), 222, 610, 250, 11.0f, false);
 }
 
-void AccordsEditor::regenerate (const std::vector<int>* avoid)
+void AccordsEditor::pushHistory()
 {
+    history.push_back (audioProcessor.apvts.state.createCopy());
+    if (history.size() > 30) history.erase (history.begin());
+    undoB.setEnabled (true);
+}
+
+void AccordsEditor::regenerate (const std::vector<int>* avoid, bool keepHistory)
+{
+    if (keepHistory) pushHistory();
     audioProcessor.generate (avoid);
     refreshFromState();
 }

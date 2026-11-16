@@ -366,16 +366,27 @@ public:
         bool any = false;
         for (auto& v : voices) if (v.active()) { v.render (patch, sr, tmpL.data(), tmpR.data(), n, lfoPhase, lfoInc); any = true; }
         lfoPhase = std::fmod (lfoPhase + lfoInc * (float) n, juce::MathConstants<float>::twoPi * 2.0f);
-        juce::Reverb::Parameters rp; rp.roomSize = 0.55f + 0.4f * patch.space; rp.damping = 0.5f; rp.wetLevel = patch.space * 0.55f; rp.dryLevel = 1.0f - patch.space * 0.25f; rp.width = 1.0f;
-        reverb.setParameters (rp);
+        // level first, THEN chorus and reverb: the reverb must never receive a huge signal
+        bool bad = false;
+        for (int i = 0; i < n; ++i)
+        {
+            tmpL[(size_t) i] *= outputGain; tmpR[(size_t) i] *= outputGain;
+            if (! std::isfinite (tmpL[(size_t) i]) || ! std::isfinite (tmpR[(size_t) i])) bad = true;
+        }
+        if (bad) { panic(); reverb.reset(); std::fill (tmpL.begin(), tmpL.begin() + n, 0.0f); std::fill (tmpR.begin(), tmpR.begin() + n, 0.0f); }
         if (patch.chorus > 0.01f) applyChorus (n);
+        juce::Reverb::Parameters rp; rp.roomSize = 0.5f + 0.32f * juce::jlimit (0.0f, 1.0f, patch.space); rp.damping = 0.6f;
+        rp.wetLevel = juce::jlimit (0.0f, 1.0f, patch.space) * 0.4f; rp.dryLevel = 1.0f - juce::jlimit (0.0f, 1.0f, patch.space) * 0.2f; rp.width = 1.0f; rp.freezeMode = 0.0f;
+        reverb.setParameters (rp);
         if (any || patch.space > 0.01f) reverb.processStereo (tmpL.data(), tmpR.data(), n);
         auto* L = buf.getWritePointer (0, start);
         auto* R = buf.getNumChannels() > 1 ? buf.getWritePointer (1, start) : nullptr;
         for (int i = 0; i < n; ++i)
         {
-            L[i] += softClip (tmpL[(size_t) i] * outputGain);
-            if (R != nullptr) R[i] += softClip (tmpR[(size_t) i] * outputGain);
+            float l = tmpL[(size_t) i], r = tmpR[(size_t) i];
+            if (! std::isfinite (l) || ! std::isfinite (r)) { l = r = 0.0f; reverb.reset(); }
+            L[i] += softClip (l);
+            if (R != nullptr) R[i] += softClip (r);
         }
     }
     bool anyActive() const { for (auto& v : voices) if (v.active()) return true; return false; }

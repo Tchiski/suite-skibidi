@@ -16,6 +16,7 @@ private:
     void overContent (juce::Graphics& g);
     void layout();
     void regenerate();
+    void regenerateNoHistory();
     void refreshFromState();
     void stepSound (int d);
     std::vector<std::tuple<int, int, juce::String>> chordLabels() const;
@@ -28,7 +29,10 @@ private:
     tchk::Chip prevB { juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x80")), pink }, nextB { juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6")), pink };
     tchk::BlackHole hole;
     tchk::Choice soundBox;
-    tchk::Knob lengthK, glideK, distK;
+    tchk::Knob lengthK, glideK, subK, distK, slidesK;
+    tchk::Chip undoB { TK_FR ("↶ Revenir"), pink };
+    std::vector<juce::ValueTree> history;
+    void pushHistory();
     tchk::PianoRoll roll;
     tchk::TransportBadge badge;
     tchk::DragOut dragMidi, dragAudio;

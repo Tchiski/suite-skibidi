@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "TchiskibidiDSP.h"
 #include "PluginEditor.h"
 
 using namespace tchk;
@@ -314,6 +315,8 @@ void MixProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     }
     for (int ch = 0; ch < numCh; ++ch) outPk = juce::jmax (outPk, buffer.getMagnitude (ch, 0, n));
     outputPeakDb = gainToDb (outPk, -100.0f);
+    tchk::sanitize (buffer);
+    spectrum.push (buffer);
 }
 
 juce::AudioProcessorEditor* MixProcessor::createEditor() { return new MixEditor (*this); }

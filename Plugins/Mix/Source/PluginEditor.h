@@ -8,7 +8,7 @@ class MixEditor : public tchk::ScaledEditor, private juce::Timer
 {
 public:
     explicit MixEditor (MixProcessor&);
-    ~MixEditor() override { stopTimer(); }
+    ~MixEditor() override { stopTimer(); audioProcessor.spectrum.wanted = false; }
 
 private:
     // EQ you can grab: PARAM = 4 bands + low cut (nodes), MULTI = 10 fixed sliders

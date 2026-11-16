@@ -173,6 +173,8 @@ void MixEditor::timerCallback()
     if (in > -50.0f && in > slowIn + 6.0f) transView.sinceHit = 0.0;
     slowIn += (in - slowIn) * 0.08f;
 
+    audioProcessor.spectrum.wanted = true;
+    audioProcessor.spectrum.update (audioProcessor.getSampleRateForDisplay(), 180);
     eqView.repaint();
     compView.repaint();
     transView.repaint();
@@ -301,6 +303,23 @@ void MixEditor::EqView::paint (juce::Graphics& g)
     g.drawText ("1k", (int) xForFreq (1000.0f) + 2, (int) h - 12, 30, 10, juce::Justification::left);
     g.drawText ("10k", (int) xForFreq (10000.0f) + 2, (int) h - 12, 30, 10, juce::Justification::left);
 
+    // live spectrum of the track (after the EQ), behind the curve
+    if (! proc.spectrum.levels.empty())
+    {
+        const auto& lv = proc.spectrum.levels;
+        juce::Path sp; sp.startNewSubPath (0.0f, h);
+        for (size_t i = 0; i < lv.size(); ++i)
+        {
+            const float x = (float) i / (float) (lv.size() - 1) * w;
+            const float y = juce::jlimit (2.0f, h, h - (lv[i] + 90.0f) / 84.0f * (h - 6.0f));
+            sp.lineTo (x, y);
+        }
+        sp.lineTo (w, h); sp.closeSubPath();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3df5ff).withAlpha (0.32f), 0, 0, juce::Colour (0xff3df5ff).withAlpha (0.04f), 0, h, false));
+        g.fillPath (sp);
+        g.setColour (juce::Colour (0xff3df5ff).withAlpha (0.45f));
+        g.strokePath (sp, juce::PathStrokeType (1.0f));
+    }
     const bool isMulti = multi(), on = raw (proc.apvts, "eq_on") > 0.5f;
     std::vector<tchk::BiquadCoeffs> coeffs;
     const auto c = MixProcessor::makeEqCoeffs (proc.apvts, 48000.0);

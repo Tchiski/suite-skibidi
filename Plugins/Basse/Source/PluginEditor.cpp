@@ -14,7 +14,8 @@ BasseEditor::BasseEditor (BasseProcessor& p)
       audioProcessor (p),
       keyWheel (music::noteNames(), pink),
       soundBox (p.apvts, "sound"),
-      lengthK (p.apvts, "length", "Longueur", pink, true), glideK (p.apvts, "glide", "Glide", pink, true), distK (p.apvts, "dist", "Distorsion", pink, true),
+      lengthK (p.apvts, "length", "Longueur", pink, true), glideK (p.apvts, "glide", "Glide", pink, true), subK (p.apvts, "sub", "Sub", pink, true),
+      distK (p.apvts, "dist", "Grain", pink, true), slidesK (p.apvts, "slides", "Glissandos", pink, true),
       dragMidi ("Glisser le MIDI", [this] { return tchk::exportfiles::writeMidi (audioProcessor.getNotes(), audioProcessor.player.bpm, "Tchiskibidi Basse"); }),
       dragAudio (TK_FR ("Glisser l'audio"), [this] { return tchk::exportfiles::writeWav (audioProcessor.getNotes(), audioProcessor.totalSteps(), audioProcessor.player.bpm, audioProcessor.exportPatch(), "Tchiskibidi Basse"); })
 {
@@ -24,26 +25,27 @@ BasseEditor::BasseEditor (BasseProcessor& p)
     levelDb = [&p] { return p.peakDb.load(); };
 
     auto stopFollow = [this] { audioProcessor.setInt ("follow", 0); };
-    keyWheel.onPick = [this, stopFollow] (int i) { stopFollow(); audioProcessor.setInt ("root", i); regenerate(); };
+    keyWheel.onPick = [this, stopFollow] (int i) { pushHistory(); stopFollow(); audioProcessor.setInt ("root", i); regenerateNoHistory(); };
     for (int i = 0; i < music::scaleNames().size(); ++i)
     {
         auto* c = scaleChips.add (new tchk::Chip (music::scaleNames()[i], pink)); c->fontSize = 11.5f;
-        c->onClick = [this, i, stopFollow] { stopFollow(); audioProcessor.setInt ("scale", i); regenerate(); };
+        c->onClick = [this, i, stopFollow] { pushHistory(); stopFollow(); audioProcessor.setInt ("scale", i); regenerateNoHistory(); };
     }
     for (int i = 0; i < tchk::gen::bassStyles().size(); ++i)
     {
         auto* c = styleChips.add (new tchk::Chip (tchk::gen::bassStyles()[i], pink)); c->fontSize = 12.0f;
         c->onClick = [this, i]
         {
+            pushHistory();
             audioProcessor.setInt ("style", i);
             if (auto* prm = audioProcessor.apvts.getParameter ("sound")) prm->setValueNotifyingHost (prm->convertTo0to1 ((float) styleSound[i]));
-            regenerate();
+            regenerateNoHistory();
         };
     }
     for (int b : { 4, 8 })
     {
         auto* c = barChips.add (new tchk::Chip (juce::String (b) + " MESURES", pink));
-        c->onClick = [this, b, stopFollow] { stopFollow(); audioProcessor.setInt ("bars", b); regenerate(); };
+        c->onClick = [this, b, stopFollow] { pushHistory(); stopFollow(); audioProcessor.setInt ("bars", b); regenerateNoHistory(); };
     }
     follow.outline = true;
     follow.onClick = [this] { audioProcessor.setInt ("follow", audioProcessor.getInt ("follow", 0) ? 0 : 1); refreshFromState(); };
@@ -51,7 +53,18 @@ BasseEditor::BasseEditor (BasseProcessor& p)
     nextB.onClick = [this] { stepSound (1); };
     hole.accent = pink;
     hole.onClick = [this] { regenerate(); };
-    for (auto* k : { &lengthK, &glideK, &distK }) k->asOrbit();
+    for (auto* k : { &lengthK, &glideK, &subK, &distK, &slidesK }) k->asOrbit();
+    undoB.fontSize = 10.5f; undoB.setEnabled (false);
+    undoB.onClick = [this]
+    {
+        if (history.empty()) return;
+        const auto snap = history.back(); history.pop_back();
+        for (auto* id : { "notes", "chords", "root", "scale", "bars", "style", "follow" }) audioProcessor.apvts.state.setProperty (id, snap.getProperty (id), nullptr);
+        audioProcessor.setNotes (audioProcessor.getNotes());
+        undoB.setEnabled (! history.empty());
+        hole.wake();
+        refreshFromState();
+    };
 
     roll.accent = pink;
     roll.glideMode = true;
@@ -64,7 +77,7 @@ BasseEditor::BasseEditor (BasseProcessor& p)
 
     presets = std::make_unique<tchk::PresetSystem> (p, "Basse", presetBox, heartButton, nullptr, nullptr, TK_FR ("♥ MES BASSES"), "Mes basses");
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &keyWheel, &follow, &prevB, &nextB, &hole, &soundBox, &lengthK, &glideK, &distK, &roll, &badge, &dragMidi, &dragAudio, &presetBox, &heartButton })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &keyWheel, &follow, &prevB, &nextB, &hole, &soundBox, &lengthK, &glideK, &subK, &distK, &slidesK, &undoB, &roll, &badge, &dragMidi, &dragAudio, &presetBox, &heartButton })
         content.addAndMakeVisible (c);
     for (auto* arr : { &scaleChips, &styleChips, &barChips }) for (auto* c : *arr) content.addAndMakeVisible (c);
 
@@ -74,7 +87,7 @@ BasseEditor::BasseEditor (BasseProcessor& p)
     addInfo (708, 64, TK_FR ("Le rythme de la basse.||TRAP : longues 808 avec sauts d'octave.|DRILL : 808 qui glissent d'une note à l'autre.|R&B : basse souple qui suit les accords.|AFRO / REGGAETON : rythmes qui dansent.|BOOM BAP : lourd et posé.|HOUSE : notes entre les kicks.|FUNK : notes courtes, octaves qui sautent.|Changer de style choisit aussi un son qui va bien avec."), "Style");
     addInfo (726, 196, TK_FR ("4 ou 8 mesures.||Longueur de la ligne de basse. Avec « Suivre mes accords », elle prend la longueur que tu choisis ici."), "Mesures");
     addInfo (844, 290, TK_FR ("La basse se cale sur tes accords.||DANS ABLETON : sur la piste Basse, règle « MIDI From » sur ta piste Tchiskibidi Accords (ou n'importe quelle piste d'accords), puis lance la lecture.|Après un tour de boucle, la basse prend la tonalité et suit chaque changement d'accord. Change tes accords : elle se met à jour au tour suivant."), TK_FR ("Suivre mes accords"));
-    addInfo (580, 278, TK_FR ("Le son de la basse.||Flèches = son suivant / précédent, ou choisis dans la liste.|808 : la note tient puis s'éteint toute seule, parfaite en trap / drill.|SUB : son continu et rond.|PLUCK / FUNK / HOUSE : notes courtes et rebondissantes.|LONGUEUR = durée des notes, GLIDE = vitesse du glissé, DISTORSION = grain."), "Son");
+    addInfo (580, 278, TK_FR ("Le son de la basse.||Flèches = son suivant / précédent, ou choisis dans la liste.|808 : la note tient puis s'éteint toute seule, parfaite en trap / drill.|SUB : son continu et rond.|PLUCK / FUNK / HOUSE : notes courtes et rebondissantes.|LONGUEUR = durée des notes. GLIDE = vitesse du glissé. SUB = une couche d'infrabasse une octave en dessous (à sentir plus qu'à entendre). GRAIN = harmoniques qui rendent la basse audible même sur un petit haut-parleur. GLISSANDOS = plus de notes qui glissent (et des sauts d'octave à fond) à la prochaine génération.|↶ REVENIR : remet la ligne de basse d'avant."), "Son");
     addInfo (472, 610, TK_FR ("Corrige la basse à la main.||Clic dans le vide = ajouter une note. Glisser une note = la déplacer. Bord droit = allonger. Re-clic sur une note sélectionnée = l'effacer. Suppr = effacer.|CLIC DROIT SUR UNE NOTE : glissé (la 808 glisse depuis la note d'avant, la courbe en pointillés le montre).|LECTURE : pas de bouton Écouter, la basse joue avec Ableton (barre d'espace) et recommence au début de ta boucle."), "Grille MIDI");
     finishSetup (59, { { 250, 14, 40 }, { 330, 32, 28 }, { 560, 12, 36 } });
     refreshFromState();
@@ -96,7 +109,8 @@ void BasseEditor::layout()
     hole.setBounds (330, 48, 240, 196);
     prevB.setBounds (330, 272, 34, 30); nextB.setBounds (536, 272, 34, 30);
     soundBox.setBounds (368, 274, 164, 26);
-    lengthK.setBounds (330, 318, 80, 76); glideK.setBounds (410, 318, 80, 76); distK.setBounds (490, 318, 80, 76);
+    { int kx = 318; for (auto* k : { &lengthK, &glideK, &subK, &distK, &slidesK }) { k->setBounds (kx, 318, 64, 76); kx += 64; } }
+    undoB.setBounds (524, 244, 80, 22);
     const int stw[] = { 62, 64, 58, 62, 92, 104, 72, 66 };
     int sx = 650, sy = 84;
     for (int i = 0; i < styleChips.size(); ++i)
@@ -125,7 +139,7 @@ void BasseEditor::paintContent (juce::Graphics& g)
     dim ("MESURES", 650, 196);
     dim (TK_FR ("Grille MIDI : modifie la basse à la main"), 222, 610, 250, 11.0f, false);
     g.setColour (pink); g.setFont (LNF::font (12.0f));
-    g.drawText ("NOUVELLE BASSE", 330, 246, 240, 18, juce::Justification::centred);
+    g.drawText ("NOUVELLE BASSE", 330, 246, 190, 18, juce::Justification::centred);
 }
 
 void BasseEditor::overContent (juce::Graphics& g)
@@ -148,7 +162,20 @@ void BasseEditor::stepSound (int d)
     if (! audioProcessor.player.playing) audioProcessor.preview (tchk::gen::bassPitch (audioProcessor.getInt ("root", 9), audioProcessor.getInt ("scale", 1), 0, 0), 0.9f, 600);
 }
 
+void BasseEditor::pushHistory()
+{
+    history.push_back (audioProcessor.apvts.state.createCopy());
+    if (history.size() > 30) history.erase (history.begin());
+    undoB.setEnabled (true);
+}
+
 void BasseEditor::regenerate()
+{
+    pushHistory();
+    regenerateNoHistory();
+}
+
+void BasseEditor::regenerateNoHistory()
 {
     if (audioProcessor.getInt ("follow", 0) != 0)
     {

@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "TchiskibidiDSP.h"
 #include "TchiskibidiParams.h"
+#include "TchiskibidiSpectrum.h"
 
 // Tchiskibidi Mix: complete channel strip for any track.
 // Input -> Low cut -> 4-band EQ -> Compressor -> Transient shaper -> [2x OS: Exciter -> Clipper] -> Width -> Output
@@ -47,6 +48,8 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     std::atomic<float> compGrDb { 0.0f }, transientDb { 0.0f }, clipGrDb { 0.0f }, inputPeakDb { -100.0f }, outputPeakDb { -100.0f };
     std::atomic<float> compInDb { -100.0f }; // compressor detector level (for the curve display)
+    tchk::SpectrumAnalyser spectrum;         // what comes out, drawn behind the EQ curve
+    double getSampleRateForDisplay() const { return sr; }
 
 private:
     float param (const char* id) const { return apvts.getRawParameterValue (id)->load(); }

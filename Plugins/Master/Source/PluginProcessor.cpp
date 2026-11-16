@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "TchiskibidiDSP.h"
 #include "PluginEditor.h"
 
 using namespace tchk;
@@ -516,6 +517,7 @@ void MasterProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         }
         dryDelay.advance();
     }
+    tchk::sanitize (buffer);
 }
 
 //==============================================================================

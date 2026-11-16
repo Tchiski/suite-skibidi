@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "TchiskibidiDSP.h"
 #include "PluginEditor.h"
 
 using namespace tchk;
@@ -209,6 +210,7 @@ void CleanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     for (int ch = 0; ch < nCh; ++ch) out = juce::jmax (out, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
     inputPeakDb = in > 1.0e-5f ? 20.0f * std::log10 (in) : -100.0f;
     outputPeakDb = out > 1.0e-5f ? 20.0f * std::log10 (out) : -100.0f;
+    tchk::sanitize (buffer);
 }
 
 void CleanProcessor::processBlockInternal (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)

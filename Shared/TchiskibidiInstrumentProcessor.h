@@ -83,6 +83,7 @@ public:
         if (! sound) for (int ch = 0; ch < buffer.getNumChannels(); ++ch) buffer.clear (ch, 0, n);
         if (buffer.getNumChannels() > 1 && getMainBusNumOutputChannels() == 1) buffer.addFrom (0, 0, buffer, 1, 0, n, 0.5f);
 
+        if (sanitize (buffer)) synth.panic();
         float pk = 0.0f;
         for (int ch = 0; ch < juce::jmin (2, buffer.getNumChannels()); ++ch) pk = juce::jmax (pk, buffer.getMagnitude (ch, 0, n));
         peakDb = gainToDb (pk);
