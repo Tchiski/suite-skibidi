@@ -46,7 +46,10 @@ void BasseProcessor::generate (const std::vector<tchk::gen::ChordEvent>* chords)
     juce::StringArray s;
     for (auto& c : ch) s.add (juce::String (c.degree) + ":" + juce::String (c.start) + ":" + juce::String (c.length));
     apvts.state.setProperty ("chords", s.joinIntoString (";"), nullptr);
-    setNotes (tchk::gen::generateBass (getInt ("root", 9), getInt ("scale", 1), bars, getInt ("style", 0), ch, rng, apvts.getRawParameterValue ("slides")->load()));
+    auto notes = tchk::gen::generateBass (getInt ("root", 9), getInt ("scale", 1), bars, getInt ("style", 0), ch, rng, apvts.getRawParameterValue ("slides")->load());
+    const int oct = getInt ("oct", 0);   // the octave chosen with − / + is kept for the next lines
+    if (oct != 0 && ! tchk::shiftOctave (notes, oct, 12, 84)) setInt ("oct", 0);
+    setNotes (notes);
 }
 
 tchk::Patch BasseProcessor::currentPatch()
@@ -91,19 +94,44 @@ std::vector<std::array<float, 12>> BasseProcessor::takeFollowed()
     return std::vector<std::array<float, 12>> (published.begin(), published.begin() + halves);
 }
 
-void BasseProcessor::timerCallback() { if (newChords.load()) followUpdate(); }
+void BasseProcessor::timerCallback()
+{
+    if (getInt ("follow", 0) == 0) { linkFollower.reset(); linkUsed = false; return; }
+    // 1) Lien: the chords of Tchiskibidi Accords, nothing to route in the DAW
+    tchk::link::Data d;
+    if (linkFollower.poll (d))
+    {
+        linkUsed = true;
+        const int halfCount = juce::jlimit (2, 32, d.steps / 8);
+        std::vector<std::array<float, 12>> data ((size_t) halfCount);
+        for (auto& a : data) a.fill (0.0f);
+        for (auto& n : d.notes)
+            for (int h = 0; h < halfCount; ++h)
+            {
+                const int a = juce::jmax (n.start, h * 8), b = juce::jmin (n.start + n.length, h * 8 + 8);
+                if (b > a) data[(size_t) h][(size_t) (n.pitch % 12)] += (float) (b - a) * (n.pitch < 60 ? 1.5f : 1.0f);
+            }
+        setInt ("bars", juce::jlimit (1, 16, d.steps / 16));
+        followFrom (data, d.root, d.scale);
+        return;
+    }
+    // 2) otherwise: chords coming in as MIDI (MIDI From in the DAW)
+    if (! linkUsed && newChords.load()) followUpdate();
+}
 
 // a full loop of incoming chords has been heard: find the key, the chords, and make a bass line on them
-void BasseProcessor::followUpdate()
+void BasseProcessor::followUpdate() { followFrom (takeFollowed(), -1, 0); }
+
+void BasseProcessor::followFrom (const std::vector<std::array<float, 12>>& data, int knownRoot, int knownScale)
 {
-    const auto data = takeFollowed();
     const auto heard = tchk::gen::chordsFromChroma (data);
     std::array<float, 12> hist {};
     for (auto& h : data) for (int k = 0; k < 12; ++k) hist[(size_t) k] += h[(size_t) k];
     float tot = 0; for (float v : hist) tot += v;
     if (tot < 1e-6f || heard.empty()) return;
-    const auto key = tchk::music::detectKey (hist);
-    const int scaleIdx = key.second ? 1 : 0;
+    auto key = tchk::music::detectKey (hist);
+    int scaleIdx = key.second ? 1 : 0;
+    if (knownRoot >= 0) { key.first = knownRoot; scaleIdx = knownScale; }
     const auto& sc = tchk::music::scale (scaleIdx);
     std::vector<tchk::gen::ChordEvent> ev;
     juce::StringArray names; juce::String sig;

@@ -98,6 +98,15 @@ inline juce::String notesToString (const std::vector<SeqNote>& notes)
     for (auto& n : notes) a.add (juce::String (n.pitch) + ":" + juce::String (n.start) + ":" + juce::String (n.length) + ":" + (n.glide ? "1" : "0") + ":" + juce::String (juce::roundToInt (n.velocity * 127.0f)));
     return a.joinIntoString (";");
 }
+// moves every note by d octaves; false (nothing changed) if a note would leave [lo, hi]
+inline bool shiftOctave (std::vector<SeqNote>& notes, int d, int lo, int hi)
+{
+    if (notes.empty()) return false;
+    for (auto& n : notes) if (n.pitch + 12 * d < lo || n.pitch + 12 * d > hi) return false;
+    for (auto& n : notes) n.pitch += 12 * d;
+    return true;
+}
+
 inline std::vector<SeqNote> notesFromString (const juce::String& s)
 {
     std::vector<SeqNote> out;

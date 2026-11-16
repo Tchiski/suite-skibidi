@@ -40,20 +40,20 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     star.accent = gold;
     star.onClick = [this] { regenerate(); };
     undoB.fontSize = 10.5f; undoB.setEnabled (false);
-    undoB.onClick = [this]
-    {
-        if (history.empty()) return;
-        const auto snap = history.back(); history.pop_back();
-        for (auto* id : { "notes", "root", "scale", "bars", "mood", "seventh" }) audioProcessor.apvts.state.setProperty (id, snap.getProperty (id), nullptr);
-        audioProcessor.setNotes (audioProcessor.getNotes());
-        undoB.setEnabled (! history.empty());
-        star.pop();
-        refreshFromState();
-    };
+    undoB.onClick = [this] { doUndo(); };
+    octDown.onClick = [this] { shiftOctave (-1); };
+    octUp.onClick = [this] { shiftOctave (1); };
 
     roll.accent = gold;
     roll.newLength = 8;
-    roll.onEdit = [this] { audioProcessor.setNotes (roll.notes); content.repaint(); };
+    roll.onEdit = [this]
+    {
+        if (tchk::notesToString (roll.notes) == audioProcessor.apvts.state.getProperty ("notes").toString()) return;   // just a selection
+        pushHistory();
+        audioProcessor.setNotes (roll.notes); content.repaint();
+    };
+    roll.onUndo = [this] { doUndo(); };
+    roll.onRedo = [this] { doRedo(); };
     roll.onAudition = [this] (int pitch) { if (! audioProcessor.player.playing) audioProcessor.preview (pitch, 0.8f, 300); };
     roll.getLabels = [this] { return chordLabels(); };
     roll.getPlayStep = [this] { return audioProcessor.player.playStep.load(); };
@@ -79,7 +79,7 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     closeListen.onClick = [this] { audioProcessor.stopListening(); panel.setVisible (false); };
     for (auto* c : { &srcMidi, &srcAudio, &genMatch, &closeListen }) panel.addAndMakeVisible (c);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &keyWheel, &seventh, &listen, &star, &undoB, &roll, &badge, &dragMidi, &dragAudio, &soundBox, &volume, &presetBox, &heartButton })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &keyWheel, &seventh, &listen, &star, &undoB, &octDown, &octUp, &roll, &badge, &dragMidi, &dragAudio, &soundBox, &volume, &presetBox, &heartButton })
         content.addAndMakeVisible (c);
     for (auto* arr : { &scaleChips, &barChips, &moodChips }) for (auto* c : *arr) content.addAndMakeVisible (c);
     content.addChildComponent (panel);
@@ -90,8 +90,8 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     addInfo (742, 64, TK_FR ("4 ou 8 mesures.||En 8 mesures, la deuxième moitié répond à la première et finit souvent sur une tension pour relancer la boucle."), "Mesures");
     addInfo (750, 124, TK_FR ("Le style des accords.||L'ambiance change les enchaînements ET le rythme : Trap ajoute des coups courts, R&B coupe les mesures en deux, Rêveur garde des accords longs."), "Ambiance");
     addInfo (844, 296, TK_FR ("Branche ta piste, joue-la, il trouve des accords qui vont avec.||EN MIDI (le plus fiable) : sur la piste Accords, règle « MIDI From » sur ta piste de piano ou de synthé.|EN AUDIO : dans le menu Sidechain en haut du plugin (Ableton), choisis ta piste. Marche sur un sample, moins précis avec batterie ou grosse basse.|ENSUITE : lance la lecture, joue 4 ou 8 mesures, il trouve la tonalité et les accords. Clique « Générer une progression qui matche » : nouvelle progression dans la même tonalité, sans copier la tienne."), TK_FR ("Écouter mes pistes"));
-    addInfo (472, 610, TK_FR ("Corrige les notes à la main.||Clic dans le vide = ajouter une note. Glisser dans le vide = sélection multiple. Clic sur une note = la sélectionner, re-clic = l'effacer. Bord droit = allonger. Suppr = effacer la sélection. Cmd + A = tout sélectionner.|LECTURE : pas de bouton Écouter. Accords joue avec Ableton (barre d'espace) et recommence pile au début de ta boucle. Clique l'étoile pendant la lecture : la nouvelle progression prend le relais.|↶ REVENIR (sous l'étoile) : remet la progression d'avant.|GLISSER : fais glisser le MIDI sur une piste MIDI, ou l'audio sur une piste audio."), "Grille MIDI");
-    addInfo (606, 382, TK_FR ("Le son des accords.||Choisis le son joué par Accords. « Muet » : Accords n'envoie que le MIDI, pour jouer tes accords avec un autre instrument (sur l'autre piste, règle « MIDI From » sur la piste Accords)."), "Son");
+    addInfo (472, 610, TK_FR ("Corrige les notes à la main.||Clic dans le vide = ajouter une note. Glisser dans le vide = sélection multiple. Clic sur une note = la sélectionner, re-clic = l'effacer. Bord droit = allonger. Suppr = effacer la sélection. Cmd + A = tout sélectionner. Cmd + Z = annuler, Cmd + Maj + Z = refaire (clique d'abord dans la grille).|OCTAVE − / + : toute la grille descend ou monte d'une octave.|Les lignes allumées sont les notes de ta gamme (la plus claire = la tonique).|LECTURE : pas de bouton Écouter. Accords joue avec Ableton (barre d'espace) et recommence pile au début de ta boucle. Clique l'étoile pendant la lecture : la nouvelle progression prend le relais.|↶ REVENIR (sous l'étoile) : remet la progression d'avant.|GLISSER : fais glisser le MIDI sur une piste MIDI, ou l'audio sur une piste audio."), "Grille MIDI");
+    addInfo (606, 382, TK_FR ("Le son des accords.||Choisis le son joué par Accords. « Muet (MIDI seul) » : Accords ne fait pas de son.|JOUER TES ACCORDS AVEC LE SYNTHÉ OU LA BASSE : rien à brancher. Dans Tchiskibidi Synthé, active « Jouer mes accords ». Dans Tchiskibidi Basse, active « Suivre mes accords ». Ils prennent automatiquement les accords de cette grille, et suivent chaque changement."), "Son");
     finishSetup (31, { { 250, 14, 40 }, { 330, 32, 28 }, { 560, 12, 36 } });
     refreshFromState();
     startTimerHz (30);
@@ -119,6 +119,7 @@ void AccordsEditor::layout()
     listen.setBounds (650, 258, 214, 30);
     heartButton.setBounds (650, 332, 26, 26);
     presetBox.setBounds (682, 332, 182, 26);
+    octDown.setBounds (96, 406, 32, 26); octUp.setBounds (164, 406, 32, 26);
     roll.setBounds (20, 440, 840, 152);
     badge.setBounds (20, 602, 190, 38);
     dragMidi.setBounds (520, 603, 160, 36);
@@ -140,14 +141,41 @@ void AccordsEditor::paintContent (juce::Graphics& g)
     dim (TK_FR ("Il écoute ta progression et en"), 650, 290, 200, 10.5f, false);
     dim (TK_FR ("propose une qui va avec."), 650, 304, 200, 10.5f, false);
     dim ("SON", 330, 366, 60, 10.5f);
+    dim ("OCTAVE", 24, 410, 70, 11.0f);
+    { const int o = audioProcessor.getInt ("oct", 0); g.setColour (o != 0 ? gold : LNF::textDim); g.setFont (LNF::font (13.0f)); g.drawText (o > 0 ? "+" + juce::String (o) : juce::String (o), 128, 410, 36, 18, juce::Justification::centred); }
     dim (TK_FR ("Grille MIDI : modifie les notes à la main"), 222, 610, 250, 11.0f, false);
 }
 
 void AccordsEditor::pushHistory()
 {
-    history.push_back (audioProcessor.apvts.state.createCopy());
-    if (history.size() > 30) history.erase (history.begin());
+    audioProcessor.pushUndo();
     undoB.setEnabled (true);
+}
+
+namespace { const juce::StringArray undoIds { "notes", "root", "scale", "bars", "mood", "seventh", "oct" }; }
+
+void AccordsEditor::doUndo()
+{
+    if (audioProcessor.undoStep (undoIds)) { star.pop(); refreshFromState(); }
+    undoB.setEnabled (audioProcessor.canUndo());
+}
+
+void AccordsEditor::doRedo()
+{
+    if (audioProcessor.redoStep (undoIds)) { star.pop(); refreshFromState(); }
+    undoB.setEnabled (audioProcessor.canUndo());
+}
+
+// the whole grid one octave lower / higher
+void AccordsEditor::shiftOctave (int d)
+{
+    auto notes = audioProcessor.getNotes();
+    if (! tchk::shiftOctave (notes, d, 24, 100)) return;
+    pushHistory();
+    audioProcessor.setInt ("oct", audioProcessor.getInt ("oct", 0) + d);
+    audioProcessor.setNotes (notes);
+    for (auto& n : notes) { audioProcessor.preview (n.pitch, 0.7f, 250); if (&n - notes.data() >= 2) break; }
+    refreshFromState();
 }
 
 void AccordsEditor::regenerate (const std::vector<int>* avoid, bool keepHistory)
@@ -167,8 +195,11 @@ void AccordsEditor::refreshFromState()
     seventh.setToggleState (audioProcessor.getInt ("seventh", 0) != 0, juce::dontSendNotification);
     roll.notes = audioProcessor.getNotes();
     roll.totalSteps = audioProcessor.totalSteps();
+    roll.scaleRoot = audioProcessor.getInt ("root", 9); roll.scaleIdx = sc;
     roll.fit();
+    undoB.setEnabled (audioProcessor.canUndo());
     roll.repaint();
+    content.repaint();
     lastVersion = audioProcessor.stateVersion.load();
 }
 

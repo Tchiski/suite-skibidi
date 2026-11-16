@@ -27,8 +27,11 @@ private:
     tchk::Chip seventh { TK_FR ("Accords à 4 notes (7e)"), gold }, listen { TK_FR ("◎ Écouter mes pistes"), gold };
     tchk::Star3D star;
     tchk::Chip undoB { TK_FR ("↶ Revenir"), gold };
-    std::vector<juce::ValueTree> history;
     void pushHistory();
+    void doUndo();
+    void doRedo();
+    void shiftOctave (int d);
+    tchk::Chip octDown { juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")), gold }, octUp { "+", gold };
     tchk::PianoRoll roll;
     tchk::TransportBadge badge;
     tchk::DragOut dragMidi, dragAudio;

@@ -22,6 +22,34 @@ SynthProcessor::SynthProcessor() : tchk::InstrumentProcessor (false), apvts (*th
 {
     apvts.state.setProperty ("bars", 4, nullptr);
     synth.outputGain = 0.32f;   // several notes of a wide pad must stay clean (no fizz)
+    startTimerHz (4);
+}
+
+void SynthProcessor::setLink (bool on)
+{
+    apvts.state.setProperty ("link", on ? 1 : 0, nullptr);
+    follower.reset();
+    if (! on) { linkText = {}; setNotes ({}); }
+    timerCallback();
+}
+
+void SynthProcessor::timerCallback()
+{
+    if (! linkOn()) return;
+    tchk::link::Data d;
+    if (! follower.poll (d)) return;
+    apvts.state.setProperty ("bars", juce::jlimit (1, 16, d.steps / 16), nullptr);
+    setNotes (d.notes);
+    // names of the chords, for the editor
+    juce::StringArray names; std::vector<int> starts;
+    for (auto& n : d.notes) if (std::find (starts.begin(), starts.end(), n.start) == starts.end()) starts.push_back (n.start);
+    std::sort (starts.begin(), starts.end());
+    for (int st : starts)
+    {
+        std::vector<int> ps; for (auto& n : d.notes) if (n.start == st) ps.push_back (n.pitch);
+        if (ps.size() >= 2 && names.size() < 8) names.add (tchk::music::chordName (ps));
+    }
+    linkText = names.joinIntoString (" - ");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SynthProcessor::createLayout()

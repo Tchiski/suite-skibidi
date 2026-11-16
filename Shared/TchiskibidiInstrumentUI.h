@@ -97,6 +97,8 @@ public:
     std::function<void (int pitch)> onAudition;
     std::function<std::vector<std::tuple<int, int, juce::String>>()> getLabels; // start, length, text
     std::function<double()> getPlayStep;
+    std::function<void()> onUndo, onRedo;     // Cmd+Z / Cmd+Shift+Z while the grid has the keyboard
+    int scaleRoot = -1, scaleIdx = 0;         // notes of this key are lit (root brighter); -1 = none
 
     PianoRoll() { setWantsKeyboardFocus (true); getProperties().set ("keepFocus", true); }
 
@@ -118,12 +120,25 @@ public:
         {
             const float y = head + (float) (hi - p) * rh;
             const bool black = juce::Array<int> { 1, 3, 6, 8, 10 }.contains (p % 12);
-            g.setColour (black ? juce::Colours::black.withAlpha (0.25f) : juce::Colours::white.withAlpha (0.03f));
-            g.fillRect (gut, y, (float) getWidth() - gut, rh);
-            if (p % 12 == 0 || p == lo)
+            const int rel = scaleRoot >= 0 ? ((p - scaleRoot) % 12 + 12) % 12 : -1;
+            const bool inKey = rel >= 0 && std::find (music::scale (scaleIdx).begin(), music::scale (scaleIdx).end(), rel) != music::scale (scaleIdx).end();
+            if (scaleRoot >= 0)
             {
-                g.setColour (LNF::textDim); g.setFont (LNF::font (9.0f, false));
-                g.drawText (music::noteNames()[p % 12] + juce::String (p / 12 - 1), 4, (int) y - 2, (int) gut, (int) rh + 4, juce::Justification::centredLeft);
+                // the notes of the key are lit, the others stay dark (the root is the brightest)
+                g.setColour (inKey ? accent.withAlpha (rel == 0 ? 0.20f : 0.09f) : juce::Colours::black.withAlpha (0.30f));
+                g.fillRect (gut, y, (float) getWidth() - gut, rh);
+                g.setColour (inKey ? accent.withAlpha (rel == 0 ? 0.95f : 0.55f) : juce::Colours::white.withAlpha (black ? 0.05f : 0.12f));
+                g.fillRect (gut - 6.0f, y + 0.5f, 4.0f, juce::jmax (1.0f, rh - 1.0f));
+            }
+            else
+            {
+                g.setColour (black ? juce::Colours::black.withAlpha (0.25f) : juce::Colours::white.withAlpha (0.03f));
+                g.fillRect (gut, y, (float) getWidth() - gut, rh);
+            }
+            if (p % 12 == 0 || p == lo || rel == 0)
+            {
+                g.setColour (rel == 0 ? accent : LNF::textDim); g.setFont (LNF::font (9.0f, rel == 0));
+                g.drawText (music::noteNames()[p % 12] + juce::String (p / 12 - 1), 2, (int) y - 2, (int) gut - 6, (int) rh + 4, juce::Justification::centredLeft);
             }
         }
         for (int i = 0; i <= totalSteps; ++i)
@@ -227,7 +242,7 @@ public:
         if (lasso)
         {
             lasso = false;
-            if (drag.moved) { drag.active = false; if (sel.empty()) giveAwayKeyboardFocus(); repaint(); return; }
+            if (drag.moved) { drag.active = false; repaint(); return; }
             if (e.y >= head && e.x >= gut)   // simple click in the void: add a note
             {
                 SeqNote n; n.start = juce::jlimit (0, totalSteps - 1, (stepAt (e.x) / gridSnap) * gridSnap); n.pitch = pitchAt (e.y);
@@ -253,10 +268,24 @@ public:
             for (size_t i = 0; i < notes.size(); ++i) if (sel.count ((int) i) == 0) keep.push_back (notes[i]);
             notes = keep; sel.clear(); changed(); return true;
         }
-        if (k.getModifiers().isCommandDown() && (k.getKeyCode() == 'A' || k.getKeyCode() == 'a'))
+        const auto mods = k.getModifiers();
+        const int code = k.getKeyCode();
+        if (mods.isCommandDown() && (code == 'A' || code == 'a'))
         {
             sel.clear(); for (size_t i = 0; i < notes.size(); ++i) sel.insert ((int) i); repaint(); return true;
         }
+        // undo / redo inside the plugin (not in the DAW)
+        if (mods.isCommandDown() && (code == 'Z' || code == 'z'))
+        {
+            sel.clear();
+            if (mods.isShiftDown()) { if (onRedo) onRedo(); }
+            else if (onUndo) onUndo();
+            repaint(); return true;
+        }
+        if (mods.isCommandDown() && (code == 'Y' || code == 'y')) { sel.clear(); if (onRedo) onRedo(); repaint(); return true; }
+        if (code == juce::KeyPress::escapeKey) { sel.clear(); repaint(); giveAwayKeyboardFocus(); return true; }
+        // any other key (computer keyboard notes, space bar...): hand the keyboard back to the DAW
+        if (! mods.isCommandDown()) giveAwayKeyboardFocus();
         return false;
     }
 
@@ -291,7 +320,7 @@ private:
         std::stable_sort (tmp.begin(), tmp.end(), [] (const auto& a, const auto& b) { return a.first.start < b.first.start || (a.first.start == b.first.start && a.first.pitch < b.first.pitch); });
         notes.clear(); sel.clear();
         for (size_t i = 0; i < tmp.size(); ++i) { notes.push_back (tmp[i].first); if (tmp[i].second) sel.insert ((int) i); }
-        if (sel.empty()) giveAwayKeyboardFocus();   // hand the keyboard back to the host (computer keyboard = notes)
+        // the grid keeps the keyboard after an edit, so that Cmd+Z undoes it here (any other key gives it back to the DAW)
         repaint();
         if (onEdit) onEdit();
     }

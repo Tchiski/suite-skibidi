@@ -31,8 +31,11 @@ private:
     tchk::Choice soundBox;
     tchk::Knob lengthK, glideK, subK, distK, slidesK;
     tchk::Chip undoB { TK_FR ("↶ Revenir"), pink };
-    std::vector<juce::ValueTree> history;
     void pushHistory();
+    void doUndo();
+    void doRedo();
+    void shiftOctave (int d);
+    tchk::Chip octDown { juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")), pink }, octUp { "+", pink };
     tchk::PianoRoll roll;
     tchk::TransportBadge badge;
     tchk::DragOut dragMidi, dragAudio;

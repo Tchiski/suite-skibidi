@@ -38,6 +38,8 @@ private:
     void openList();
     juce::OwnedArray<tchk::Chip> catChips, octChips;
     tchk::Chip prevB { juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x80")), orange }, nextB { juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6")), orange };
+    tchk::Chip linkB { TK_FR ("⛓ Jouer mes accords"), orange };
+    juce::String lastLinkText;
     tchk::Chip monoB { "Mono", orange }, demoB { TK_FR ("▶ Écouter le preset"), orange }, backB { TK_FR ("↶ Revenir"), orange };
     juce::OwnedArray<tchk::Knob> knobs;
     tchk::Knob volume;

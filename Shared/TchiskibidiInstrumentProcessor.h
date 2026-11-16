@@ -100,6 +100,19 @@ public:
     void preview (int pitch, float vel = 0.8f, int ms = 350) { audition.push (pitch, vel, ms); }
     Patch exportPatch() { return currentPatch(); }
 
+    // --- undo / redo (kept here so it survives closing the plugin window). Message thread only.
+    // pushUndo() before a change; undoStep / redoStep put back the listed state properties.
+    void pushUndo()
+    {
+        undoStack.push_back (stateTree().createCopy());
+        if (undoStack.size() > 60) undoStack.erase (undoStack.begin());
+        redoStack.clear();
+    }
+    bool canUndo() const { return ! undoStack.empty(); }
+    bool canRedo() const { return ! redoStack.empty(); }
+    bool undoStep (const juce::StringArray& ids) { return swapState (undoStack, redoStack, ids); }
+    bool redoStep (const juce::StringArray& ids) { return swapState (redoStack, undoStack, ids); }
+
     // called by the editor's timer: when the protection acted, write what happened in
     // ~/Music/Tchiskibidi/Journal.txt (to find the cause), and return true so the editor can say it
     bool flushDiagnostics()
@@ -154,6 +167,17 @@ public:
 
 protected:
     int lastTrips = 0;
+    std::vector<juce::ValueTree> undoStack, redoStack;
+    bool swapState (std::vector<juce::ValueTree>& from, std::vector<juce::ValueTree>& to, const juce::StringArray& ids)
+    {
+        if (from.empty()) return false;
+        to.push_back (stateTree().createCopy());
+        const auto snap = from.back(); from.pop_back();
+        for (auto& id : ids) stateTree().setProperty (juce::Identifier (id), snap.getProperty (juce::Identifier (id)), nullptr);
+        player.setNotes (getNotes(), totalSteps());
+        ++stateVersion;
+        return true;
+    }
     struct Ev { int offset; bool on; int pitch; float vel; bool glide; bool external = false; };
     // hooks
     virtual Patch currentPatch() = 0;

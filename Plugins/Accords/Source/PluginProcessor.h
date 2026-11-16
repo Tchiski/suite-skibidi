@@ -3,13 +3,15 @@
 #include "TchiskibidiInstrumentProcessor.h"
 #include "TchiskibidiGenerators.h"
 #include "TchiskibidiSounds.h"
+#include "TchiskibidiLink.h"
 
 // Tchiskibidi Accords: generates chord progressions in a key, plays them with the host
 // transport (and sends them out as MIDI), can listen to your tracks to propose a matching progression.
-class AccordsProcessor : public tchk::InstrumentProcessor
+class AccordsProcessor : public tchk::InstrumentProcessor, private juce::Timer
 {
 public:
     AccordsProcessor();
+    ~AccordsProcessor() override { stopTimer(); }
     const juce::String getName() const override { return "Tchiskibidi Accords"; }
     juce::AudioProcessorEditor* createEditor() override;
 
@@ -42,6 +44,8 @@ protected:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    void timerCallback() override;   // Lien: share the progression with Synthé / Basse
+    juce::String lastPublished;
     juce::Random rng;
     int lastSound = -1;
     tchk::Patch soundPatch;

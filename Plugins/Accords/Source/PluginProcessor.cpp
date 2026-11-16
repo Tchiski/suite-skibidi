@@ -11,6 +11,16 @@ AccordsProcessor::AccordsProcessor()
     apvts.state.setProperty ("seventh", 0, nullptr);
     synth.outputGain = 0.3f;   // 3 or 4 notes at once: keep headroom
     generate();
+    startTimerHz (4);
+}
+
+// Lien: each time the progression changes, it is written for Tchiskibidi Synthé and Basse
+void AccordsProcessor::timerCallback()
+{
+    const auto sig = apvts.state.getProperty ("notes").toString() + "|" + juce::String (totalSteps()) + "|" + juce::String (getInt ("root", 9)) + "|" + juce::String (getInt ("scale", 1));
+    if (sig == lastPublished) return;
+    lastPublished = sig;
+    tchk::link::publish (getNotes(), totalSteps(), getInt ("root", 9), getInt ("scale", 1));
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout AccordsProcessor::createLayout()
@@ -26,7 +36,10 @@ void AccordsProcessor::generate (const std::vector<int>* avoid)
 {
     auto res = tchk::gen::generateChords (getInt ("root", 9), getInt ("scale", 1), getInt ("bars", 4), getInt ("mood", 0), getInt ("seventh", 0) != 0, rng, avoid, &lastDegrees);
     lastDegrees = res.degrees;
-    setNotes (res.notes);
+    auto notes = res.notes;
+    const int oct = getInt ("oct", 0);
+    if (oct != 0 && ! tchk::shiftOctave (notes, oct, 24, 100)) setInt ("oct", 0);
+    setNotes (notes);
 }
 
 tchk::Patch AccordsProcessor::currentPatch()

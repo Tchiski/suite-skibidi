@@ -32,7 +32,9 @@ private:
     void paintContent (juce::Graphics& g);
     void overContent (juce::Graphics& g);
     void layout();
-    void commit();          // zones -> processor
+    void commit();          // zones -> processor (and into the undo list)
+    void undoRedo (bool redo);   // Cmd+Z / Cmd+Shift+Z
+    std::vector<juce::String> undoZ, redoZ;
     void select (int i);
     void refreshFromState();
 

@@ -3,6 +3,7 @@
 #include "TchiskibidiInstrumentProcessor.h"
 #include "TchiskibidiGenerators.h"
 #include "TchiskibidiSounds.h"
+#include "TchiskibidiLink.h"
 
 // Tchiskibidi Basse: 808 and bass lines in a key and a style, played with the host transport.
 // "Suivre mes accords": listens to the chords coming in as MIDI (e.g. from Tchiskibidi Accords) and follows them.
@@ -41,6 +42,9 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void timerCallback() override;
     void followUpdate();
+    void followFrom (const std::vector<std::array<float, 12>>& data, int knownRoot, int knownScale);
+    tchk::link::Follower linkFollower;
+    bool linkUsed = false;
     juce::String lastFollowSig;
     juce::Random rng;
     std::vector<int> lastProg;

@@ -62,7 +62,7 @@ TwistEditor::TwistEditor (TwistProcessor& p)
     }
     delB.onClick = [this] { if (selected >= 0 && selected < (int) zones.size()) { zones.erase (zones.begin() + selected); select (-1); commit(); } };
     sprinkleB.outline = true;
-    sprinkleB.onClick = [this] { audioProcessor.sprinkle (density, juce::jmax (8, viewBars)); refreshFromState(); };
+    sprinkleB.onClick = [this] { undoZ.push_back (twist::toString (audioProcessor.getZones())); redoZ.clear(); audioProcessor.sprinkle (density, juce::jmax (8, viewBars)); refreshFromState(); };
     magnetB.setToggleState (true, juce::dontSendNotification); magnetB.fontSize = 11.0f;
     magnetB.onClick = [this] { magnet = ! magnet; magnetB.setToggleState (magnet, juce::dontSendNotification); magnetB.setButtonText (magnet ? "Aimant : sur les coups" : "Aimant : sur la grille"); };
     followB.fontSize = 11.0f;
@@ -182,8 +182,23 @@ void TwistEditor::select (int i)
     content.repaint();
 }
 
+void TwistEditor::undoRedo (bool redo)
+{
+    auto& from = redo ? redoZ : undoZ;
+    auto& to = redo ? undoZ : redoZ;
+    if (from.empty()) return;
+    to.push_back (twist::toString (audioProcessor.getZones()));
+    zones = twist::fromString (from.back()); from.pop_back();
+    select (-1);
+    audioProcessor.setZones (zones);
+    timeline.repaint();
+    content.repaint();
+}
+
 void TwistEditor::commit()
 {
+    const auto before = twist::toString (audioProcessor.getZones()), now = twist::toString (zones);
+    if (before != now) { undoZ.push_back (before); if (undoZ.size() > 60) undoZ.erase (undoZ.begin()); redoZ.clear(); }
     audioProcessor.setZones (zones);
     timeline.repaint();
     content.repaint();
@@ -342,7 +357,12 @@ bool TwistEditor::Timeline::keyPressed (const juce::KeyPress& k)
 {
     if ((k == juce::KeyPress::deleteKey || k == juce::KeyPress::backspaceKey) && ed.selected >= 0)
     {
-        ed.zones.erase (ed.zones.begin() + ed.selected); ed.select (-1); ed.commit(); giveAwayKeyboardFocus(); return true;
+        ed.zones.erase (ed.zones.begin() + ed.selected); ed.select (-1); ed.commit(); return true;
     }
+    const auto mods = k.getModifiers();
+    const int code = k.getKeyCode();
+    if (mods.isCommandDown() && (code == 'Z' || code == 'z')) { ed.undoRedo (mods.isShiftDown()); return true; }
+    if (mods.isCommandDown() && (code == 'Y' || code == 'y')) { ed.undoRedo (true); return true; }
+    if (! mods.isCommandDown()) giveAwayKeyboardFocus();   // other keys go back to the DAW
     return false;
 }

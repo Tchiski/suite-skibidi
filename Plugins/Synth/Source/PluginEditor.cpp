@@ -50,6 +50,8 @@ SynthEditor::SynthEditor (SynthProcessor& p)
         c->onClick = [this, o] { audioProcessor.setParam ("octave", (float) o); refreshPresetUI(); };
         content.addAndMakeVisible (c);
     }
+    linkB.outline = true;
+    linkB.onClick = [this] { audioProcessor.setLink (! audioProcessor.linkOn()); refreshPresetUI(); content.repaint(); };
     monoB.onClick = [this] { audioProcessor.setParam ("mono", monoB.getToggleState() ? 0.0f : 1.0f); refreshPresetUI(); };
     demoB.setToggleState (true, juce::dontSendNotification);
     demoB.onClick = [this] { demo(); };
@@ -61,10 +63,11 @@ SynthEditor::SynthEditor (SynthProcessor& p)
 
     presets = std::make_unique<tchk::PresetSystem> (p, "Synthe", presetBox, heartButton, nullptr, nullptr, TK_FR ("♥ MES SONS"), "Mes sons");
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &orb, &prevB, &nextB, &monoB, &demoB, &backB, &volume, &comet, &presetBox, &heartButton })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &orb, &prevB, &nextB, &linkB, &monoB, &demoB, &backB, &volume, &comet, &presetBox, &heartButton })
         content.addAndMakeVisible (c);
     layout();
     addInfo (850, 38, TK_FR ("Choisis une famille, puis un son.||Les familles en haut : pads, plucks, leads, cordes, basses, keys, cloches, effets (152 sons en tout).|Les flèches de chaque côté de la sphère passent au son suivant. Clique la sphère pour voir toute la liste et choisir directement.|Joue avec ton clavier MIDI ou le clavier de l'ordinateur d'Ableton (touche M)."), TK_FR ("Sons"));
+    addInfo (652, 590, TK_FR ("Le synthé joue tes accords, rien à brancher.||Mets Tchiskibidi Accords sur une piste et ce Synthé sur une autre. Active « Jouer mes accords » : le Synthé joue la grille d'Accords avec la lecture d'Ableton (barre d'espace), et suit chaque changement.|Mets le son d'Accords sur « Muet (MIDI seul) » pour n'entendre que le Synthé. Tu peux en mettre plusieurs (un pad, des cloches...) : ils jouent tous les mêmes accords.|Si tu as plusieurs Accords dans ton projet, c'est le dernier modifié qui compte."), TK_FR ("Jouer mes accords"));
     addInfo (130, 314, TK_FR ("Retouche le son.||Ces 12 réglages marchent sur tous les sons. Fais tourner le soleil autour de chaque planète.|BRILLANCE : plus sombre ou plus brillant. ESPACE : la réverbération. MOUVEMENT : le son ondule. ATTAQUE : le son arrive d'un coup ou doucement.|HASARD : la comète au centre tire des réglages au hasard, dans des limites qui sonnent toujours bien. ↶ REVENIR remet le son d'avant (tu peux reculer plusieurs fois).|♥ GARDER : enregistre le son tel quel avec un nom. Tu le retrouves dans « Mes sons »."), TK_FR ("Réglages"));
     finishSetup (47, { { 230, 14, 40 }, { 320, 30, 28 }, { 560, 12, 34 } });
     refreshPresetUI();
@@ -90,6 +93,7 @@ void SynthEditor::layout()
     presetBox.setBounds (682, 312, 170, 26);
     for (int i = 0; i < octChips.size(); ++i) octChips[i]->setBounds (110 + i * 50, 592, 44, 32);
     monoB.setBounds (372, 592, 70, 32);
+    linkB.setBounds (450, 588, 198, 30);
     demoB.setBounds (676, 592, 176, 34);
 }
 
@@ -105,7 +109,13 @@ void SynthEditor::paintContent (juce::Graphics& g)
     g.drawText ("OCTAVE", 38, 599, 70, 18, juce::Justification::centredLeft);
 }
 
-void SynthEditor::overContent (juce::Graphics&) {}
+void SynthEditor::overContent (juce::Graphics& g)
+{
+    if (! audioProcessor.linkOn()) return;
+    g.setColour (LNF::textDim); g.setFont (LNF::font (10.0f, false));
+    const auto txt = audioProcessor.linkText.isNotEmpty() ? TK_FR ("Joue : ") + audioProcessor.linkText : TK_FR ("Ouvre Tchiskibidi Accords sur une piste...");
+    g.drawFittedText (txt, 450, 619, 198, 18, juce::Justification::centred, 1);
+}
 
 // one planet per family, lit from the top left, its surface turning slowly
 void SynthEditor::Orb::paint (juce::Graphics& g)
@@ -328,6 +338,7 @@ void SynthEditor::refreshPresetUI()
     const int oct = (int) audioProcessor.apvts.getRawParameterValue ("octave")->load();
     for (int k = 0; k < octChips.size(); ++k) octChips[k]->setToggleState (k - 2 == oct, juce::dontSendNotification);
     monoB.setToggleState (audioProcessor.apvts.getRawParameterValue ("mono")->load() > 0.5f, juce::dontSendNotification);
+    linkB.setToggleState (audioProcessor.linkOn(), juce::dontSendNotification);
     lastPreset = audioProcessor.presetIndex();
 }
 
@@ -383,6 +394,7 @@ void SynthEditor::timerCallback()
         if (u >= 1.0f) animStart = -1;
     }
     if (audioProcessor.presetIndex() != lastPreset) refreshPresetUI();
+    if (audioProcessor.linkText != lastLinkText || linkB.getToggleState() != audioProcessor.linkOn()) { lastLinkText = audioProcessor.linkText; refreshPresetUI(); content.repaint(); }
     comet.repaint();
     orb.repaint();
 }
