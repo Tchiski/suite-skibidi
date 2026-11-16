@@ -256,6 +256,7 @@ void AccordsEditor::ListenPanel::paint (juce::Graphics& g)
 
 void AccordsEditor::timerCallback()
 {
+    audioProcessor.flushDiagnostics();
     if (audioProcessor.stateVersion.load() != lastVersion) refreshFromState();
     if (audioProcessor.player.playing.load()) roll.repaint();
     badge.repaint();

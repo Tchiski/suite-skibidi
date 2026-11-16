@@ -298,10 +298,19 @@ private:
 };
 
 // Polyphonic synth (with a mono/legato mode for basses and leads) + reverb
+// what the engine was doing when the protection had to act (copied on the audio thread, written to a file by the editor)
+struct EngineDiag
+{
+    double sampleRate = 0; int blockSize = 0, voices = 0; float rms = 0, zcr = 0, cutoff = 0, reso = 0, space = 0, chorus = 0, drive = 0, noise = 0, level = 0;
+    int unison = 0; bool mono = false; float vowel = -1; std::array<int, 16> pitches {};
+};
+
 class SynthEngine
 {
 public:
     static constexpr int numVoices = 16;
+    std::atomic<int> guardTrips { 0 };
+    EngineDiag lastDiag;
     Patch patch;
     float outputGain = 1.0f;   // overall level before the soft limiter (polyphonic pads need headroom)
 
@@ -379,12 +388,37 @@ public:
         rp.wetLevel = juce::jlimit (0.0f, 1.0f, patch.space) * 0.4f; rp.dryLevel = 1.0f - juce::jlimit (0.0f, 1.0f, patch.space) * 0.2f; rp.width = 1.0f; rp.freezeMode = 0.0f;
         reverb.setParameters (rp);
         if (any || patch.space > 0.01f) reverb.processStereo (tmpL.data(), tmpR.data(), n);
+        // protection 1: a loud, noise-like sound (many zero crossings) that the patch does not ask for = a fault.
+        // Everything is reset at once and the block is muted (it never reaches the speakers).
+        {
+            double e = 0; int zc = 0;
+            for (int i = 0; i < n; ++i) { e += tmpL[(size_t) i] * tmpL[(size_t) i]; if (i > 0 && (tmpL[(size_t) i] >= 0.0f) != (tmpL[(size_t) i - 1] >= 0.0f)) ++zc; }
+            const float rms = (float) std::sqrt (e / juce::jmax (1, n)), zcr = n > 1 ? (float) zc / (float) (n - 1) : 0.0f;
+            const bool noisy = rms > 0.25f && zcr > 0.3f && patch.noise < 0.05f;
+            burst = noisy ? burst + n : 0;
+            if (burst > (int) (0.004f * sr) || ! std::isfinite (rms))
+            {
+                lastDiag.sampleRate = sr; lastDiag.blockSize = n; lastDiag.rms = rms; lastDiag.zcr = zcr; lastDiag.cutoff = patch.cutoff; lastDiag.reso = patch.reso;
+                lastDiag.space = patch.space; lastDiag.chorus = patch.chorus; lastDiag.drive = patch.drive; lastDiag.noise = patch.noise; lastDiag.level = patch.level;
+                lastDiag.unison = patch.unison; lastDiag.mono = patch.mono; lastDiag.vowel = patch.vowel; lastDiag.voices = 0;
+                for (size_t v = 0; v < voices.size(); ++v) { lastDiag.pitches[v] = voices[v].active() ? voices[v].note : -1; if (voices[v].active()) ++lastDiag.voices; }
+                ++guardTrips;
+                panic(); reverb.reset(); std::fill (chL.begin(), chL.end(), 0.0f); std::fill (chR.begin(), chR.end(), 0.0f);
+                std::fill (tmpL.begin(), tmpL.begin() + n, 0.0f); std::fill (tmpR.begin(), tmpR.begin() + n, 0.0f);
+                burst = 0; limEnv = 0;
+            }
+        }
         auto* L = buf.getWritePointer (0, start);
         auto* R = buf.getNumChannels() > 1 ? buf.getWritePointer (1, start) : nullptr;
+        // protection 2: a clean peak limiter at -1 dB (instant attack, smooth release), then the soft clipper
+        const float relK = std::exp (-1.0f / (0.15f * sr));
         for (int i = 0; i < n; ++i)
         {
             float l = tmpL[(size_t) i], r = tmpR[(size_t) i];
             if (! std::isfinite (l) || ! std::isfinite (r)) { l = r = 0.0f; reverb.reset(); }
+            const float a = juce::jmax (std::abs (l), std::abs (r));
+            limEnv = a > limEnv ? a : limEnv * relK + a * (1.0f - relK);
+            if (limEnv > 0.89f) { const float gr = 0.89f / limEnv; l *= gr; r *= gr; }
             L[i] += softClip (l);
             if (R != nullptr) R[i] += softClip (r);
         }
@@ -423,6 +457,7 @@ private:
     }
     std::vector<float> chL, chR;
     int chW = 0; float chPh = 0;
+    int burst = 0; float limEnv = 0;
     std::array<Voice, numVoices> voices;
     juce::Reverb reverb;
     std::vector<float> tmpL, tmpR;

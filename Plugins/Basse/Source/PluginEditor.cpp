@@ -217,6 +217,7 @@ std::vector<std::tuple<int, int, juce::String>> BasseEditor::chordLabels() const
 
 void BasseEditor::timerCallback()
 {
+    audioProcessor.flushDiagnostics();
     if (audioProcessor.stateVersion.load() != lastVersion) refreshFromState();
     const int played = audioProcessor.notesPlayed.load();
     if (played != lastPlayed) { hole.pulse (1.0f); lastPlayed = played; }

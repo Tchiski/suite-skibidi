@@ -100,6 +100,25 @@ public:
     void preview (int pitch, float vel = 0.8f, int ms = 350) { audition.push (pitch, vel, ms); }
     Patch exportPatch() { return currentPatch(); }
 
+    // called by the editor's timer: when the protection acted, write what happened in
+    // ~/Music/Tchiskibidi/Journal.txt (to find the cause), and return true so the editor can say it
+    bool flushDiagnostics()
+    {
+        const int t = synth.guardTrips.load();
+        if (t == lastTrips) return false;
+        lastTrips = t;
+        const auto& d = synth.lastDiag;
+        juce::String pitches; for (int p : d.pitches) if (p >= 0) pitches << p << " ";
+        auto f = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Tchiskibidi").getChildFile ("Journal.txt");
+        f.getParentDirectory().createDirectory();
+        f.appendText (juce::Time::getCurrentTime().toString (true, true) + "  " + getName() + "  protection #" + juce::String (t)
+                      + "  sr " + juce::String (d.sampleRate, 0) + " block " + juce::String (d.blockSize) + " rms " + juce::String (d.rms, 3) + " zcr " + juce::String (d.zcr, 3)
+                      + " voices " + juce::String (d.voices) + " [" + pitches.trim() + "] cutoff " + juce::String (d.cutoff, 0) + " reso " + juce::String (d.reso, 2)
+                      + " space " + juce::String (d.space, 2) + " chorus " + juce::String (d.chorus, 2) + " drive " + juce::String (d.drive, 2) + " unison " + juce::String (d.unison)
+                      + " vowel " + juce::String (d.vowel, 1) + " mono " + juce::String ((int) d.mono) + " level " + juce::String (d.level, 2) + "\n");
+        return true;
+    }
+
     // --- state
     void getStateInformation (juce::MemoryBlock& dest) override
     {
@@ -134,6 +153,7 @@ public:
     std::atomic<int> stateVersion { 0 };
 
 protected:
+    int lastTrips = 0;
     struct Ev { int offset; bool on; int pitch; float vel; bool glide; bool external = false; };
     // hooks
     virtual Patch currentPatch() = 0;

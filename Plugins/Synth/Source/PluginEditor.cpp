@@ -372,6 +372,7 @@ void SynthEditor::undo()
 
 void SynthEditor::timerCallback()
 {
+    audioProcessor.flushDiagnostics();
     if (animStart > 0)
     {
         const float u = (float) juce::jlimit (0.0, 1.0, (tchk::nowSec() - animStart) / 0.38);
