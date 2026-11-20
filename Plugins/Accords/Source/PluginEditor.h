@@ -52,6 +52,7 @@ private:
     tchk::Chip srcMidi { "MIDI entrant", gold }, srcAudio { "Audio (sidechain)", gold }, genMatch { TK_FR ("★ Générer une progression qui matche"), gold }, closeListen { "Fermer", gold };
     int heardRoot = 0; bool heardMinor = true; std::vector<int> heardDegrees;
     int lastVersion = -1;
+    bool lastHadSel = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AccordsEditor)
 };

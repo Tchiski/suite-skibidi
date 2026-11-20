@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include <set>
 #include "PluginEditor.h"
 
 AccordsProcessor::AccordsProcessor()
@@ -40,6 +41,79 @@ void AccordsProcessor::generate (const std::vector<int>* avoid)
     const int oct = getInt ("oct", 0);
     if (oct != 0 && ! tchk::shiftOctave (notes, oct, 24, 100)) setInt ("oct", 0);
     setNotes (notes);
+}
+
+void AccordsProcessor::generateAround (const std::vector<tchk::SeqNote>& kept)
+{
+    if (kept.empty()) { generate(); return; }
+    const int steps = totalSteps();
+    // the time kept by the selected notes
+    std::vector<bool> keptStep ((size_t) steps, false);
+    for (auto& k : kept) for (int t = k.start; t < juce::jmin (steps, k.start + k.length); ++t) keptStep[(size_t) juce::jmax (0, t)] = true;
+
+    auto pcsAt = [] (const std::vector<tchk::SeqNote>& ns, int t)
+    {
+        std::vector<int> ps; for (auto& n : ns) if (n.start <= t && n.start + n.length > t) ps.push_back (n.pitch);
+        return ps;
+    };
+    // fits a full progression around the kept notes: its notes are cut where the kept ones are
+    auto fit = [&] (const std::vector<tchk::SeqNote>& full)
+    {
+        std::vector<tchk::SeqNote> out (kept.begin(), kept.end());
+        for (auto n : full)
+        {
+            int a = n.start; const int e = juce::jmin (steps, n.start + n.length);
+            while (a < e && keptStep[(size_t) a]) ++a;            // skip the kept part at its start
+            if (a >= e) continue;
+            int b = a; while (b < e && ! keptStep[(size_t) b]) ++b; // stop at the next kept part
+            n.start = a; n.length = b - a;
+            if (n.length >= 4) out.push_back (n);   // no tiny leftovers of a chord
+        }
+        // fill the holes left by the leftovers: the next new chord starts earlier (or the previous one lasts longer)
+        auto covered = [&] (int t) { if (keptStep[(size_t) t]) return true; for (auto& n : out) if (n.start <= t && n.start + n.length > t) return true; return false; };
+        for (int t = 0; t < steps; ++t)
+        {
+            if (covered (t)) continue;
+            int e = t; while (e < steps && ! covered (e)) ++e;   // hole [t, e)
+            bool done = false;
+            for (auto& n : out) if (n.start == e && ! keptStep[(size_t) e]) { n.length += n.start - t; n.start = t; done = true; }
+            if (! done) for (auto& n : out) if (n.start + n.length == t && t > 0 && ! keptStep[(size_t) (t - 1)]) n.length += e - t;
+            t = e;
+        }
+        std::stable_sort (out.begin(), out.end(), [] (const tchk::SeqNote& x, const tchk::SeqNote& y) { return x.start < y.start || (x.start == y.start && x.pitch < y.pitch); });
+        return out;
+    };
+    // how well the new chords join the kept ones: shared notes, small moves, no plain repeat
+    auto score = [&] (const std::vector<tchk::SeqNote>& ns)
+    {
+        float sc = 0.0f;
+        for (int t = 1; t < steps; ++t)
+        {
+            if (keptStep[(size_t) t] == keptStep[(size_t) (t - 1)]) continue;   // only at the joins
+            const auto A = pcsAt (ns, t - 1), B = pcsAt (ns, t);
+            if (A.empty() || B.empty()) continue;
+            int common = 0, move = 0;
+            for (int a : A) { int best = 12; for (int b : B) { if (a % 12 == b % 12) ++common; best = juce::jmin (best, std::abs (a - b)); } move += best; }
+            std::set<int> pa, pb; for (int a : A) pa.insert (a % 12); for (int b : B) pb.insert (b % 12);
+            sc += (float) common * 1.0f - (float) move * 0.15f - (pa == pb ? 3.0f : 0.0f);
+        }
+        return sc + rng.nextFloat() * 0.5f;
+    };
+
+    std::vector<tchk::SeqNote> best; float bestScore = -1e9f;
+    std::vector<int> bestDeg;
+    for (int i = 0; i < 40; ++i)
+    {
+        auto res = tchk::gen::generateChords (getInt ("root", 9), getInt ("scale", 1), getInt ("bars", 4), getInt ("mood", 0), getInt ("seventh", 0) != 0, rng, nullptr, nullptr);
+        auto notes = res.notes;
+        const int oct = getInt ("oct", 0);
+        if (oct != 0) tchk::shiftOctave (notes, oct, 24, 100);
+        auto cand = fit (notes);
+        const float s = score (cand);
+        if (s > bestScore) { bestScore = s; best = cand; bestDeg = res.degrees; }
+    }
+    lastDegrees = bestDeg;
+    setNotes (best);
 }
 
 tchk::Patch AccordsProcessor::currentPatch()

@@ -23,6 +23,8 @@ public:
 
     // new progression with the current settings (message thread)
     void generate (const std::vector<int>* avoid = nullptr);
+    // keeps these notes where they are and regenerates everything around them, so that it links well to them
+    void generateAround (const std::vector<tchk::SeqNote>& kept);
     std::vector<int> lastDegrees;
 
     // listening: 0 off, 1 MIDI in, 2 audio sidechain

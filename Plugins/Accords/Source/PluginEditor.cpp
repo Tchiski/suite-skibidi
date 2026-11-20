@@ -38,7 +38,16 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     listen.outline = true;
     listen.onClick = [this] { openListen(); };
     star.accent = gold;
-    star.onClick = [this] { regenerate(); };
+    star.onClick = [this]
+    {
+        if (roll.hasSelection())   // the selected notes stay, the rest is regenerated around them
+        {
+            pushHistory();
+            audioProcessor.generateAround (roll.selectedNotes());
+            refreshFromState();
+        }
+        else regenerate();
+    };
     undoB.fontSize = 10.5f; undoB.setEnabled (false);
     undoB.onClick = [this] { doUndo(); };
     octDown.onClick = [this] { shiftOctave (-1); };
@@ -90,7 +99,7 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
     addInfo (742, 64, TK_FR ("4 ou 8 mesures.||En 8 mesures, la deuxième moitié répond à la première et finit souvent sur une tension pour relancer la boucle."), "Mesures");
     addInfo (750, 124, TK_FR ("Le style des accords.||L'ambiance change les enchaînements ET le rythme : Trap ajoute des coups courts, R&B coupe les mesures en deux, Rêveur garde des accords longs."), "Ambiance");
     addInfo (844, 296, TK_FR ("Branche ta piste, joue-la, il trouve des accords qui vont avec.||EN MIDI (le plus fiable) : sur la piste Accords, règle « MIDI From » sur ta piste de piano ou de synthé.|EN AUDIO : dans le menu Sidechain en haut du plugin (Ableton), choisis ta piste. Marche sur un sample, moins précis avec batterie ou grosse basse.|ENSUITE : lance la lecture, joue 4 ou 8 mesures, il trouve la tonalité et les accords. Clique « Générer une progression qui matche » : nouvelle progression dans la même tonalité, sans copier la tienne."), TK_FR ("Écouter mes pistes"));
-    addInfo (472, 610, TK_FR ("Corrige les notes à la main.||Clic dans le vide = ajouter une note. Glisser dans le vide = sélection multiple. Clic sur une note = la sélectionner, re-clic = l'effacer. Bord droit = allonger. Suppr = effacer la sélection. Cmd + A = tout sélectionner. Cmd + Z = annuler, Cmd + Maj + Z = refaire (clique d'abord dans la grille).|OCTAVE − / + : toute la grille descend ou monte d'une octave.|Les lignes allumées sont les notes de ta gamme (la plus claire = la tonique).|LECTURE : pas de bouton Écouter. Accords joue avec Ableton (barre d'espace) et recommence pile au début de ta boucle. Clique l'étoile pendant la lecture : la nouvelle progression prend le relais.|↶ REVENIR (sous l'étoile) : remet la progression d'avant.|GLISSER : fais glisser le MIDI sur une piste MIDI, ou l'audio sur une piste audio."), "Grille MIDI");
+    addInfo (472, 610, TK_FR ("Corrige les notes à la main.||Clic dans le vide = ajouter une note. Glisser dans le vide = sélection multiple. Clic sur une note = la sélectionner, re-clic = l'effacer. Bord droit = allonger. Suppr = effacer la sélection. Cmd + A = tout sélectionner. Cmd + D = dupliquer la sélection juste après. Cmd + Z = annuler, Cmd + Maj + Z = refaire (clique d'abord dans la grille).|OCTAVE − / + : toute la grille descend ou monte d'une octave.|Les lignes allumées sont les notes de ta gamme (la plus claire = la tonique).|LECTURE : pas de bouton Écouter. Accords joue avec Ableton (barre d'espace) et recommence pile au début de ta boucle. Clique l'étoile pendant la lecture : la nouvelle progression prend le relais.|GARDER DES ACCORDS : sélectionne des notes (clic, Maj + clic ou glisse dans le vide), puis clique l'étoile. Elles restent à leur place, et le début ou la suite est regénéré pour bien s'enchaîner avec elles. Reclique l'étoile pour d'autres idées.|↶ REVENIR (sous l'étoile) : remet la progression d'avant.|GLISSER : fais glisser le MIDI sur une piste MIDI, ou l'audio sur une piste audio."), "Grille MIDI");
     addInfo (606, 382, TK_FR ("Le son des accords.||Choisis le son joué par Accords. « Muet (MIDI seul) » : Accords ne fait pas de son.|JOUER TES ACCORDS AVEC LE SYNTHÉ OU LA BASSE : rien à brancher. Dans Tchiskibidi Synthé, active « Jouer mes accords ». Dans Tchiskibidi Basse, active « Suivre mes accords ». Ils prennent automatiquement les accords de cette grille, et suivent chaque changement."), "Son");
     finishSetup (31, { { 250, 14, 40 }, { 330, 32, 28 }, { 560, 12, 36 } });
     refreshFromState();
@@ -142,6 +151,8 @@ void AccordsEditor::paintContent (juce::Graphics& g)
     dim (TK_FR ("propose une qui va avec."), 650, 304, 200, 10.5f, false);
     dim ("SON", 330, 366, 60, 10.5f);
     dim ("OCTAVE", 24, 410, 70, 11.0f);
+    if (roll.hasSelection())
+    { g.setColour (gold); g.setFont (LNF::font (11.5f)); g.drawFittedText (TK_FR ("★ L'étoile garde tes notes sélectionnées et refait le reste"), 650, 372, 214, 36, juce::Justification::centredLeft, 2); }
     { const int o = audioProcessor.getInt ("oct", 0); g.setColour (o != 0 ? gold : LNF::textDim); g.setFont (LNF::font (13.0f)); g.drawText (o > 0 ? "+" + juce::String (o) : juce::String (o), 128, 410, 36, 18, juce::Justification::centred); }
     dim (TK_FR ("Grille MIDI : modifie les notes à la main"), 222, 610, 250, 11.0f, false);
 }
@@ -193,7 +204,7 @@ void AccordsEditor::refreshFromState()
     barChips[0]->setToggleState (bars == 4, juce::dontSendNotification); barChips[1]->setToggleState (bars == 8, juce::dontSendNotification);
     for (int i = 0; i < moodChips.size(); ++i) moodChips[i]->setToggleState (i == mood, juce::dontSendNotification);
     seventh.setToggleState (audioProcessor.getInt ("seventh", 0) != 0, juce::dontSendNotification);
-    roll.notes = audioProcessor.getNotes();
+    roll.setNotesKeepSelection (audioProcessor.getNotes());
     roll.totalSteps = audioProcessor.totalSteps();
     roll.scaleRoot = audioProcessor.getInt ("root", 9); roll.scaleIdx = sc;
     roll.fit();
@@ -288,6 +299,7 @@ void AccordsEditor::ListenPanel::paint (juce::Graphics& g)
 void AccordsEditor::timerCallback()
 {
     audioProcessor.flushDiagnostics();
+    if (roll.hasSelection() != lastHadSel) { lastHadSel = roll.hasSelection(); content.repaint(); }
     if (audioProcessor.stateVersion.load() != lastVersion) refreshFromState();
     if (audioProcessor.player.playing.load()) roll.repaint();
     badge.repaint();

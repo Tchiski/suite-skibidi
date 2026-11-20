@@ -102,6 +102,23 @@ public:
 
     PianoRoll() { setWantsKeyboardFocus (true); getProperties().set ("keepFocus", true); }
 
+    std::vector<SeqNote> selectedNotes() const
+    {
+        std::vector<SeqNote> out; for (int i : sel) if (i >= 0 && i < (int) notes.size()) out.push_back (notes[(size_t) i]);
+        return out;
+    }
+    bool hasSelection() const { return ! sel.empty(); }
+    // new notes from outside; notes that are still there stay selected
+    void setNotesKeepSelection (const std::vector<SeqNote>& n)
+    {
+        const auto keep = selectedNotes();
+        notes = n; sel.clear();
+        for (size_t i = 0; i < notes.size(); ++i)
+            for (auto& k : keep)
+                if (k.pitch == notes[i].pitch && k.start == notes[i].start && k.length == notes[i].length) { sel.insert ((int) i); break; }
+        repaint();
+    }
+
     void fit()
     {
         if (notes.empty()) return;
@@ -273,6 +290,34 @@ public:
         if (mods.isCommandDown() && (code == 'A' || code == 'a'))
         {
             sel.clear(); for (size_t i = 0; i < notes.size(); ++i) sel.insert ((int) i); repaint(); return true;
+        }
+        // Cmd+D: duplicate the selected notes right after them (the copies become the selection)
+        if (mods.isCommandDown() && (code == 'D' || code == 'd'))
+        {
+            if (sel.empty()) return true;
+            int a = totalSteps, b = 0;
+            for (int i : sel) { a = juce::jmin (a, notes[(size_t) i].start); b = juce::jmax (b, notes[(size_t) i].start + notes[(size_t) i].length); }
+            const int span = juce::jmax (1, b - a);
+            std::vector<SeqNote> copies;
+            for (int i : sel)
+            {
+                auto n = notes[(size_t) i]; n.start += span;
+                if (n.start >= totalSteps) continue;
+                n.length = juce::jmin (n.length, totalSteps - n.start);
+                copies.push_back (n);
+            }
+            if (copies.empty()) return true;
+            // the copies replace what was under them
+            std::vector<SeqNote> keep;
+            for (auto& n : notes)
+            {
+                bool under = false;
+                for (auto& c : copies) if (n.pitch == c.pitch && n.start < c.start + c.length && n.start + n.length > c.start) under = true;
+                if (! under) keep.push_back (n);
+            }
+            notes = keep; sel.clear();
+            for (auto& c : copies) { notes.push_back (c); sel.insert ((int) notes.size() - 1); }
+            changed(); return true;
         }
         // undo / redo inside the plugin (not in the DAW)
         if (mods.isCommandDown() && (code == 'Z' || code == 'z'))
