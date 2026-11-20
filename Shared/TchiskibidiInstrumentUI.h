@@ -202,6 +202,7 @@ public:
     {
         grabKeyboardFocus();
         if (e.y < head || e.x < gut) return;
+        lastClickStep = stepAt (e.x);
         const int hit = hitNote (e.position);
         if (e.mods.isPopupMenu())
         {
@@ -291,6 +292,44 @@ public:
         {
             sel.clear(); for (size_t i = 0; i < notes.size(); ++i) sel.insert ((int) i); repaint(); return true;
         }
+        // Cmd+C / Cmd+X / Cmd+V: copy, cut, paste (through the clipboard, so it also works from Accords to Basse)
+        if (mods.isCommandDown() && (code == 'C' || code == 'c' || code == 'X' || code == 'x'))
+        {
+            if (sel.empty()) return true;
+            auto picked = selectedNotes();
+            int a = totalSteps; for (auto& n : picked) a = juce::jmin (a, n.start);
+            for (auto& n : picked) n.start -= a;
+            juce::SystemClipboard::copyTextToClipboard ("tchk-notes:" + notesToString (picked));
+            if (code == 'X' || code == 'x')
+            {
+                std::vector<SeqNote> keep;
+                for (size_t i = 0; i < notes.size(); ++i) if (sel.count ((int) i) == 0) keep.push_back (notes[i]);
+                notes = keep; sel.clear(); changed();
+            }
+            return true;
+        }
+        if (mods.isCommandDown() && (code == 'V' || code == 'v'))
+        {
+            const auto clip = juce::SystemClipboard::getTextFromClipboard();
+            if (! clip.startsWith ("tchk-notes:")) return true;
+            auto pasted = notesFromString (clip.fromFirstOccurrenceOf ("tchk-notes:", false, false));
+            if (pasted.empty()) return true;
+            // where: under the mouse if it is over the grid, otherwise where you last clicked
+            const auto m = getMouseXYRelative();
+            int at = (getLocalBounds().contains (m) && m.x >= (int) gut) ? stepAt (m.x) : lastClickStep;
+            at = juce::jlimit (0, totalSteps - 1, (at / juce::jmax (1, gridSnap)) * juce::jmax (1, gridSnap));
+            std::vector<SeqNote> copies;
+            for (auto n : pasted)
+            {
+                n.start += at;
+                if (n.start >= totalSteps) continue;
+                n.length = juce::jmin (n.length, totalSteps - n.start);
+                n.pitch = juce::jlimit (0, 127, n.pitch);
+                copies.push_back (n);
+            }
+            placeCopies (copies);
+            return true;
+        }
         // Cmd+D: duplicate the selected notes right after them (the copies become the selection)
         if (mods.isCommandDown() && (code == 'D' || code == 'd'))
         {
@@ -306,18 +345,8 @@ public:
                 n.length = juce::jmin (n.length, totalSteps - n.start);
                 copies.push_back (n);
             }
-            if (copies.empty()) return true;
-            // the copies replace what was under them
-            std::vector<SeqNote> keep;
-            for (auto& n : notes)
-            {
-                bool under = false;
-                for (auto& c : copies) if (n.pitch == c.pitch && n.start < c.start + c.length && n.start + n.length > c.start) under = true;
-                if (! under) keep.push_back (n);
-            }
-            notes = keep; sel.clear();
-            for (auto& c : copies) { notes.push_back (c); sel.insert ((int) notes.size() - 1); }
-            changed(); return true;
+            placeCopies (copies);
+            return true;
         }
         // undo / redo inside the plugin (not in the DAW)
         if (mods.isCommandDown() && (code == 'Z' || code == 'z'))
@@ -335,6 +364,24 @@ public:
     }
 
 private:
+    int lastClickStep = 0;
+    // puts new notes in the grid (they replace what was under them) and selects them
+    void placeCopies (const std::vector<SeqNote>& copies)
+    {
+        if (copies.empty()) return;
+        std::vector<SeqNote> keep;
+        for (auto& n : notes)
+        {
+            bool under = false;
+            for (auto& c : copies) if (n.pitch == c.pitch && n.start < c.start + c.length && n.start + n.length > c.start) under = true;
+            if (! under) keep.push_back (n);
+        }
+        notes = keep; sel.clear();
+        for (auto& c : copies) { notes.push_back (c); sel.insert ((int) notes.size() - 1); }
+        int mn = 127, mx = 0; for (auto& n : notes) { mn = juce::jmin (mn, n.pitch); mx = juce::jmax (mx, n.pitch); }
+        if (mn < lo || mx > hi) fit();
+        changed();
+    }
     struct Drag { bool active = false, moved = false, wasSelected = false, resize = false; int hit = -1, startStep = 0, startPitch = 0;
                   juce::Point<float> startPos; std::vector<std::pair<int, SeqNote>> orig; std::set<int> baseSel; };
     Drag drag;
