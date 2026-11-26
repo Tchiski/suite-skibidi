@@ -13,6 +13,7 @@ public:
 private:
     void timerCallback() override;
     void paintContent (juce::Graphics& g);
+    void overContent (juce::Graphics& g);
     void layout();
     void regenerate (const std::vector<int>* avoid = nullptr, bool keepHistory = true);
     void refreshFromState();

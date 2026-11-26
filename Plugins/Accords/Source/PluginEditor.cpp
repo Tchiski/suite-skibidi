@@ -15,6 +15,7 @@ AccordsEditor::AccordsEditor (AccordsProcessor& p)
       volume (p.apvts, "volume", "Volume", gold, true)
 {
     content.paintFn = [this] (juce::Graphics& g) { paintContent (g); };
+    content.overFn = [this] (juce::Graphics& g) { overContent (g); };
     content.layoutFn = [this] { layout(); };
     levelDb = [&p] { return p.peakDb.load(); };
 
@@ -138,6 +139,14 @@ void AccordsEditor::layout()
     genMatch.setBounds (18, 236, 304, 34); closeListen.setBounds (18, 280, 304, 32);
 }
 
+// texts that change (drawn above the cached background)
+void AccordsEditor::overContent (juce::Graphics& g)
+{
+    if (roll.hasSelection())
+    { g.setColour (gold); g.setFont (LNF::font (11.5f)); g.drawFittedText (TK_FR ("★ L'étoile garde tes notes sélectionnées et refait le reste"), 650, 372, 214, 36, juce::Justification::centredLeft, 2); }
+    { const int o = audioProcessor.getInt ("oct", 0); g.setColour (o != 0 ? gold : LNF::textDim); g.setFont (LNF::font (13.0f)); g.drawText (o > 0 ? "+" + juce::String (o) : juce::String (o), 128, 410, 36, 18, juce::Justification::centred); }
+}
+
 void AccordsEditor::paintContent (juce::Graphics& g)
 {
     paintBackgroundAndHeader (g, "Accords", {});
@@ -151,9 +160,6 @@ void AccordsEditor::paintContent (juce::Graphics& g)
     dim (TK_FR ("propose une qui va avec."), 650, 304, 200, 10.5f, false);
     dim ("SON", 330, 366, 60, 10.5f);
     dim ("OCTAVE", 24, 410, 70, 11.0f);
-    if (roll.hasSelection())
-    { g.setColour (gold); g.setFont (LNF::font (11.5f)); g.drawFittedText (TK_FR ("★ L'étoile garde tes notes sélectionnées et refait le reste"), 650, 372, 214, 36, juce::Justification::centredLeft, 2); }
-    { const int o = audioProcessor.getInt ("oct", 0); g.setColour (o != 0 ? gold : LNF::textDim); g.setFont (LNF::font (13.0f)); g.drawText (o > 0 ? "+" + juce::String (o) : juce::String (o), 128, 410, 36, 18, juce::Justification::centred); }
     dim (TK_FR ("Grille MIDI : modifie les notes à la main"), 222, 610, 250, 11.0f, false);
 }
 

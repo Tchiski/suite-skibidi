@@ -139,7 +139,6 @@ void BasseEditor::paintContent (juce::Graphics& g)
     dim ("STYLE", 650, 64);
     dim ("MESURES", 650, 196);
     dim ("OCTAVE", 24, 410, 70, 11.0f);
-    { const int o = audioProcessor.getInt ("oct", 0); g.setColour (o != 0 ? pink : LNF::textDim); g.setFont (LNF::font (13.0f)); g.drawText (o > 0 ? "+" + juce::String (o) : juce::String (o), 128, 410, 36, 18, juce::Justification::centred); }
     dim (TK_FR ("Grille MIDI : modifie la basse à la main"), 222, 610, 250, 11.0f, false);
     g.setColour (pink); g.setFont (LNF::font (12.0f));
     g.drawText ("NOUVELLE BASSE", 330, 246, 190, 18, juce::Justification::centred);
@@ -147,6 +146,8 @@ void BasseEditor::paintContent (juce::Graphics& g)
 
 void BasseEditor::overContent (juce::Graphics& g)
 {
+    { const int o = audioProcessor.getInt ("oct", 0); g.setColour (o != 0 ? pink : LNF::textDim); g.setFont (LNF::font (13.0f)); g.drawText (o > 0 ? "+" + juce::String (o) : juce::String (o), 128, 410, 36, 18, juce::Justification::centred); }
+
     g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f, false));
     const bool on = audioProcessor.getInt ("follow", 0) != 0;
     juce::String msg = ! on ? TK_FR ("La basse joue sur tes accords.")
