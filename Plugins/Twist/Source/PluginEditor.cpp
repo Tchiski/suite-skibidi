@@ -3,7 +3,26 @@
 using tchk::LNF;
 using namespace twist;
 
-namespace { constexpr int kW = 880, kH = 650; const juce::Rectangle<int> tlArea { 20, 98, 840, 246 }; constexpr int DY = -42; constexpr int X0 = 20; }
+namespace
+{
+    constexpr int kW = 880, kH = 650; const juce::Rectangle<int> tlArea { 124, 100, 632, 242 }; constexpr int DY = -42; constexpr int X0 = 20;
+    // the whole plugin is a big cassette: body with the two little tabs at the top
+    juce::Path cassetteShape()
+    {
+        juce::Path p;
+        const float l = 4, t = 4, r = 876, b = 646, rad = 26;
+        p.startNewSubPath (l + rad, t);
+        // write-protect notches at the top
+        for (float nx : { 70.0f, 780.0f }) { p.lineTo (nx, t); p.lineTo (nx, t + 9); p.lineTo (nx + 30, t + 9); p.lineTo (nx + 30, t); }
+        p.lineTo (r - rad, t); p.quadraticTo (r, t, r, t + rad);
+        p.lineTo (r, b - rad); p.quadraticTo (r, b, r - rad, b);
+        p.lineTo (l + rad, b); p.quadraticTo (l, b, l, b - rad);
+        p.lineTo (l, t + rad); p.quadraticTo (l, t, l + rad, t);
+        p.closeSubPath();
+        return p;
+    }
+    const juce::Point<float> reelL { 70.0f, 221.0f }, reelR { 810.0f, 221.0f };
+}
 
 TwistEditor::TwistEditor (TwistProcessor& p)
     : tchk::ScaledEditor (p, kW, kH, 0.9f, "twist"), audioProcessor (p)
@@ -77,7 +96,9 @@ TwistEditor::TwistEditor (TwistProcessor& p)
     layout();
     addInfo (66, 490, TK_FR ("Choisis un effet, puis glisse sur la timeline.||25 effets fous en 4 familles : TEMPS (tape stop, bullet time, disque rayé...), HACHAGE (rafale, hoquet, bug 8-bit...), VOIX FOLLES (hélium, démon, ascenseur...), ESPACE FOU (toupie, trou noir, fantôme...).|AIMANT : les petits triangles sur la timeline sont les coups du morceau (kick, snare...), repérés pendant la lecture. Les zones se collent dessus.|Mets Twist sur ta piste instru (ou le master). Tu poses des effets à des moments précis : un tape stop avant le refrain, une coupure sur le dernier temps, un filtre qui monte...|POSER : clique un effet, puis glisse sur la timeline à l'endroit voulu.|MODIFIER : clique une zone, règle-la en bas, tire son bord droit pour l'allonger, glisse-la pour la déplacer.|EFFACER : sélectionne la zone et clique Effacer (ou Suppr).|Tout est calé sur les mesures d'Ableton : chaque effet se déclenche pile au bon moment, à chaque lecture et dans l'export (bounce)."), "Twist");
     addInfo (332, 64, TK_FR ("Twist place des effets tout seul.||Il pose de petits effets aux bons endroits : fins de phrases de 4 et 8 mesures, avant les changements de partie (tape stop, coupure, filtre, stutter...). Reclique pour d'autres idées.|L'image du morceau (la forme d'onde) se dessine pendant que tu le joues."), "Saupoudrer");
-    finishSetup (71, { { 260, 14, 40 }, { 340, 30, 28 }, { 560, 12, 34 } });
+    windowShape = [] { return cassetteShape(); };
+    gearBounds = { 818, 14, 26, 26 };
+    finishSetup (71, {});
     refreshFromState();
     select (-1);
     startTimerHz (30);
@@ -117,7 +138,31 @@ void TwistEditor::layout()
 void TwistEditor::paintContent (juce::Graphics& g)
 {
     namespace sh = tchk::shapes;
-    sky.drawStaticStars (g);
+    // the cassette: dark plastic body, a striped label, the tape window, screws
+    {
+        const auto body = cassetteShape();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2c1e48), 0, 0, juce::Colour (0xff120a20), 0, 650, false)); g.fillPath (body);
+        // the label (everything at the top lives on it)
+        const juce::Rectangle<float> label (14, 14, 852, 346);
+        g.setColour (juce::Colour (0xff3a2460)); g.fillRoundedRectangle (label, 14);
+        const juce::Colour stripes[] = { coral, juce::Colour (0xffffb84d), juce::Colour (0xffff4fd8) };
+        for (int i = 0; i < 3; ++i) { g.setColour (stripes[i]); g.fillRect (label.getX() + 140.0f, label.getY() + 12.0f + 7.0f * (float) i, label.getWidth() - 260.0f, 4.0f); }
+        // the clear window of the tape, with the two reels
+        const juce::Rectangle<float> win (22, 92, 836, 258);
+        g.setColour (juce::Colour (0xff0c0716)); g.fillRoundedRectangle (win, 40);
+        g.setColour (juce::Colours::white.withAlpha (0.18f)); g.drawRoundedRectangle (win, 40, 2.0f);
+        // the lower part of a cassette (where the tape runs out), behind the stickers
+        juce::Path trap; trap.startNewSubPath (150, 486); trap.lineTo (730, 486); trap.lineTo (770, 646); trap.lineTo (110, 646); trap.closeSubPath();
+        g.setColour (juce::Colours::black.withAlpha (0.25f)); g.fillPath (trap);
+        // screws
+        for (auto pt : { juce::Point<float> (22, 628), juce::Point<float> (858, 628), juce::Point<float> (440, 628) })
+        {
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffe8dcff), pt.x - 4, pt.y - 4, juce::Colour (0xff4a3a68), pt.x + 5, pt.y + 5, false));
+            g.fillEllipse (pt.x - 7, pt.y - 7, 14, 14);
+            g.setColour (juce::Colour (0xff2a1d40)); g.drawLine (pt.x - 4, pt.y - 4, pt.x + 4, pt.y + 4, 2.0f);
+        }
+        g.setColour (juce::Colours::white.withAlpha (0.12f)); g.strokePath (body, juce::PathStrokeType (2.0f));
+    }
     // title: a sticker of its own
     {
         g.saveState(); g.addTransform (juce::AffineTransform::rotation (-0.05f, 70, 34));
@@ -176,6 +221,32 @@ void TwistEditor::paintContent (juce::Graphics& g)
 
 void TwistEditor::overContent (juce::Graphics& g)
 {
+    // the two reels turn while the song plays (the left one full of tape, the right one almost empty)
+    {
+        const double pb = audioProcessor.playBeat.load();
+        const float a = pb >= 0 ? (float) pb * 1.3f : 0.0f;
+        auto reel = [&] (juce::Point<float> c, float tape, float rot)
+        {
+            g.setColour (juce::Colour (0xff3a2418)); g.fillEllipse (c.x - tape, c.y - tape, tape * 2, tape * 2);
+            g.setColour (juce::Colour (0xff5a3a24)); g.drawEllipse (c.x - tape + 3, c.y - tape + 3, tape * 2 - 6, tape * 2 - 6, 1.0f);
+            const float hub = 22.0f;
+            g.setColour (juce::Colour (0xfff0e8ff)); g.fillEllipse (c.x - hub, c.y - hub, hub * 2, hub * 2);
+            g.setColour (juce::Colour (0xff2a1d40)); g.fillEllipse (c.x - 9, c.y - 9, 18, 18);
+            for (int k = 0; k < 6; ++k)
+            {
+                const float ang = rot + (float) k * juce::MathConstants<float>::pi / 3.0f;
+                juce::Path tooth; tooth.addRectangle (-2.5f, -14.0f, 5.0f, 6.0f);
+                g.setColour (juce::Colour (0xfff0e8ff)); g.fillPath (tooth, juce::AffineTransform::rotation (ang).translated (c.x, c.y));
+                juce::Path hole; hole.addEllipse (-4.0f, -19.0f, 8.0f, 8.0f);
+                g.setColour (juce::Colour (0xff3a2460)); g.fillPath (hole, juce::AffineTransform::rotation (ang + 0.5f).translated (c.x, c.y));
+            }
+        };
+        reel (reelL, 46.0f, a);
+        reel (reelR, 30.0f, a * 1.4f);
+        // the tape going from one reel to the other along the bottom of the window
+        g.setColour (juce::Colour (0xff5a3a24));
+        g.drawLine (reelL.x + 10, reelL.y + 46, reelR.x - 10, reelR.y + 30, 2.0f);
+    }
     const juce::Rectangle<float> badgeR ((float) X0 + 14, 418 + DY, 56, 56);
     if (selected < 0 || selected >= (int) zones.size())
     {

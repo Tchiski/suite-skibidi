@@ -6,6 +6,18 @@ namespace
 {
     constexpr int kW = 860, kH = 640;
     juce::RangedAudioParameter& param (juce::AudioProcessorValueTreeState& s, const char* id) { return *s.getParameter (id); }
+    // the window is the rocket: hull, the two fins, and the cockpit dome with the name
+    juce::Path finTop() { juce::Path f; f.startNewSubPath (250, 92); f.lineTo (300, 58); f.lineTo (400, 58); f.lineTo (390, 92); f.closeSubPath(); return f; }
+    juce::Path finBottom() { juce::Path f; f.startNewSubPath (250, 620); f.lineTo (300, 638); f.lineTo (400, 638); f.lineTo (390, 620); f.closeSubPath(); return f; }
+    juce::Path hullPath() { juce::Path h; h.addRoundedRectangle (14, 88, 832, 540, 70); return h; }
+    juce::Path domePath() { juce::Path d; d.addEllipse (10, 8, 220, 150); return d; }
+    juce::Path rocketShape()
+    {
+        juce::Path p = hullPath();
+        p.addPath (finTop()); p.addPath (finBottom()); p.addPath (domePath());
+        p.setUsingNonZeroWinding (true);
+        return p;
+    }
     float value (juce::AudioProcessorValueTreeState& s, const char* id) { return s.getRawParameterValue (id)->load(); }
 }
 
@@ -41,7 +53,10 @@ TchiskibidiSpaceEditor::TchiskibidiSpaceEditor (TchiskibidiSpaceProcessor& p)
     addInfo (778, 102, TK_FR ("Dose d'effet et volume final.||MIX dose le son d'origine et l'effet (0 % = sans effet). OUTPUT = volume final."));
 
     layout();
-    finishSetup (11, { { 250, 22, 54 }, { 330, 44, 34 }, { 420, 18, 40 }, { 520, 12, 44 }, { 610, 36, 30 }, { 700, 16, 38 } });
+    windowShape = [] { return rocketShape(); };
+    gearBounds = { 810, 98, 26, 26 };
+    closeBounds = { 808, 132, 30, 30 };
+    finishSetup (11, {});
     startTimerHz (30);
 }
 
@@ -80,27 +95,26 @@ void TchiskibidiSpaceEditor::layout()
 void TchiskibidiSpaceEditor::paintContent (juce::Graphics& g)
 {
     sky.drawStaticStars (g);
-    g.setColour (LNF::textDim);
-    g.setFont (LNF::font (13.0f));
-    g.drawText ("T C H I S K I B I D I", 18, 18, 400, 18, juce::Justification::centredLeft);
-    g.setColour (LNF::text);
-    g.setFont (LNF::font (34.0f));
-    g.drawText ("SPACE", 18, 36, 400, 40, juce::Justification::centredLeft);
-    g.setColour (LNF::textDim);
-    g.setFont (LNF::font (12.0f, false));
-    g.drawText ("echo + reverb", 432, 60, 400, 16, juce::Justification::centredRight);
 
     // the rocket: a capsule hull with fins, riveted seams, the windows set into it
     const juce::Colour steel (0xff1a2b48);
     {
-        juce::Path finT; finT.startNewSubPath (250, 92); finT.lineTo (300, 58); finT.lineTo (400, 58); finT.lineTo (390, 92); finT.closeSubPath();
-        juce::Path finB; finB.startNewSubPath (250, 620); finB.lineTo (300, 638); finB.lineTo (400, 638); finB.lineTo (390, 620); finB.closeSubPath();
+        auto finT = finTop(), finB = finBottom();
+        // the cockpit dome (glass) behind the hull
+        {
+            const auto dome = domePath();
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff6ad8ff).withAlpha (0.55f), 60, 20, juce::Colour (0xff102040).withAlpha (0.9f), 200, 150, true));
+            g.fillPath (dome);
+            g.setColour (juce::Colour (0xffb8d8f0).withAlpha (0.8f)); g.strokePath (dome, juce::PathStrokeType (3.0f));
+            g.setColour (juce::Colours::white.withAlpha (0.25f));
+            juce::Path refl; refl.addCentredArc (120, 83, 90, 60, 0, -2.4f, -1.2f, true); g.strokePath (refl, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
         for (auto* f : { &finT, &finB })
         {
             g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff7ae6), 280, 56, juce::Colour (0xff8a2a9a), 400, 100, false)); g.fillPath (*f);
             g.setColour (juce::Colours::white.withAlpha (0.3f)); g.strokePath (*f, juce::PathStrokeType (1.2f));
         }
-        juce::Path hull; hull.addRoundedRectangle (14, 88, 832, 540, 70);
+        juce::Path hull = hullPath();
         g.setColour (LNF::cyan.withAlpha (0.12f)); g.strokePath (hull, juce::PathStrokeType (10.0f));
         juce::ColourGradient hg (juce::Colour (0xff2a4068).withAlpha (0.92f), 0, 88, juce::Colour (0xff0a1224).withAlpha (0.94f), 0, 628, false);
         hg.addColour (0.12, juce::Colour (0xff3a5a88).withAlpha (0.92f));
@@ -158,6 +172,13 @@ void TchiskibidiSpaceEditor::paintContent (juce::Graphics& g)
     g.drawText (TK_FR ("TIME →    ↑ FEEDBACK"), 30, 244, 140, 12, juce::Justification::centred);
     g.drawText ("IN", 732, 238, 22, 12, juce::Justification::centred);
     g.drawText ("OUT", 748, 238, 22, 12, juce::Justification::centred);
+    // the name, in the cockpit
+    g.setColour (juce::Colour (0xffd8f4ff));
+    g.setFont (LNF::font (10.0f));
+    g.drawText ("T C H I S K I B I D I", 40, 30, 160, 14, juce::Justification::centred);
+    g.setColour (LNF::text);
+    g.setFont (LNF::font (32.0f));
+    g.drawText ("SPACE", 30, 42, 180, 38, juce::Justification::centred);
 }
 
 void TchiskibidiSpaceEditor::timerCallback()

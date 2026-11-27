@@ -47,14 +47,14 @@ inline float facetLight (Point<float> a, Point<float> b, Point<float> c)
 
 //==============================================================================
 // SUPERNOVA: the whole window is held in a broken crystal (red, magenta, violet facets,
-// glowing cracks). `hole` returns the inner outline (so nothing important is drawn under the crystal).
-inline juce::Path drawCrystalFrame (juce::Graphics& g, Rectangle<float> area, int seed, float thick,
-                                    std::array<Colour, 4> pal = { Colour (0xff7a0f2e), Colour (0xffc2185b), Colour (0xffe0245e), Colour (0xff5a1a8a) },
-                                    Colour crack = Colour (0xffff7ab8))
+// glowing cracks). The same seed always gives the same crystal (its outline is the window's shape).
+struct CrystalGeom { std::vector<Point<float>> outer, ridge, inner; };
+
+inline CrystalGeom crystalGeom (Rectangle<float> area, int seed, float thick, float spikes = 0.0f)
 {
     juce::Random r (seed);
     const float W = area.getWidth(), H = area.getHeight(), P = 2.0f * (W + H);
-    std::vector<Point<float>> outer, ridge, inner;
+    CrystalGeom cg;
     float t = 0;
     while (t < P - 8.0f)
     {
@@ -63,27 +63,37 @@ inline juce::Path drawCrystalFrame (juce::Graphics& g, Rectangle<float> area, in
         const auto pt = perimeterPoint (area, t);
         const float cornerD = juce::jmin (juce::jmin (pt.x - area.getX(), area.getRight() - pt.x) + juce::jmin (pt.y - area.getY(), area.getBottom() - pt.y), 200.0f);
         const float bulge = (cornerD < 90.0f ? 1.6f - cornerD / 150.0f : 1.0f) * (r.nextFloat() < 0.22f ? 1.45f : 1.0f);
-        const float o = r.nextFloat() * thick * 0.6f;
+        // some shards break out of the outline (spikes outwards)
+        const bool shard = spikes > 0.0f && r.nextFloat() < 0.3f;
+        const float o = shard ? -spikes * (0.45f + 0.55f * r.nextFloat()) : r.nextFloat() * thick * 0.6f;
         const float in = thick * (0.9f + r.nextFloat() * 0.6f) * bulge;
         const float rd = o + (in - o) * (0.4f + r.nextFloat() * 0.3f);
-        const auto p = perimeterPoint (area, t);
-        outer.push_back (p + nrm * o);
-        ridge.push_back (perimeterPoint (area, t + (r.nextFloat() - 0.5f) * 14.0f) + nrm * rd);
-        inner.push_back (perimeterPoint (area, t + (r.nextFloat() - 0.5f) * 18.0f) + nrm * in);
-        t += 26.0f + r.nextFloat() * 30.0f;
+        cg.outer.push_back (pt + nrm * o);
+        cg.ridge.push_back (perimeterPoint (area, t + (r.nextFloat() - 0.5f) * 14.0f) + nrm * rd);
+        cg.inner.push_back (perimeterPoint (area, t + (r.nextFloat() - 0.5f) * 18.0f) + nrm * in);
+        t += (spikes > 0.0f ? 20.0f : 26.0f) + r.nextFloat() * 30.0f;
     }
-    const size_t n = outer.size();
-    auto polyPath = [] (const std::vector<Point<float>>& pts)
-    {
-        juce::Path p; p.startNewSubPath (pts[0]); for (size_t i = 1; i < pts.size(); ++i) p.lineTo (pts[i]); p.closeSubPath(); return p;
-    };
-    const auto outerPath = polyPath (outer), innerPath = polyPath (inner);
+    return cg;
+}
 
-    // outside the crystal: dark, so the broken silhouette reads
-    {
-        juce::Path outside; outside.addRectangle (area.expanded (2.0f)); outside.addPath (outerPath); outside.setUsingNonZeroWinding (false);
-        g.setColour (Colour (0xff07020c)); g.fillPath (outside);
-    }
+inline juce::Path polygonPath (const std::vector<Point<float>>& pts)
+{
+    juce::Path p; if (pts.empty()) return p;
+    p.startNewSubPath (pts[0]); for (size_t i = 1; i < pts.size(); ++i) p.lineTo (pts[i]); p.closeSubPath(); return p;
+}
+
+inline juce::Path crystalOutline (Rectangle<float> area, int seed, float thick, float spikes = 0.0f) { return polygonPath (crystalGeom (area, seed, thick, spikes).outer); }
+
+inline juce::Path drawCrystalFrame (juce::Graphics& g, Rectangle<float> area, int seed, float thick, float spikes,
+                                    std::array<Colour, 4> pal = { Colour (0xff7a0f2e), Colour (0xffc2185b), Colour (0xffe0245e), Colour (0xff5a1a8a) },
+                                    Colour crack = Colour (0xffff7ab8))
+{
+    const auto cg = crystalGeom (area, seed, thick, spikes);
+    const auto& outer = cg.outer; const auto& ridge = cg.ridge; const auto& inner = cg.inner;
+    juce::Random r (seed + 1);
+    const size_t n = outer.size();
+    auto polyPath = [] (const std::vector<Point<float>>& pts) { return polygonPath (pts); };
+    const auto innerPath = polyPath (inner);
     // the facets: outer -> ridge (lit side) and ridge -> inner (shadow side)
     auto facet = [&] (Point<float> a, Point<float> b, Point<float> c, float bias)
     {

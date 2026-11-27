@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TchiskibidiMacWindow.h"
+
 // Shared UI widgets for the Tchiskibidi suite: knobs, meters, tags, panels,
 // the Tchiski mascot and a resizable editor base.
 
@@ -381,7 +383,7 @@ public:
         addAndMakeVisible (content);
         content.setBounds (0, 0, baseW, baseH);
 
-        staticLayer.fn = [this] (juce::Graphics& g) { if (content.paintFn) content.paintFn (g); };
+        staticLayer.fn = [this] (juce::Graphics& g) { if (windowShape) g.reduceClipRegion (windowShape()); if (content.paintFn) content.paintFn (g); };
         dynamicLayer.fn = [this] (juce::Graphics& g) { if (content.overFn) content.overFn (g); };
         for (auto* l : { &staticLayer, &dynamicLayer })
         {
@@ -394,6 +396,8 @@ public:
         gearBounds = { baseW - 42, 20, 26, 26 };
         gear.onClick = [this] { showSettings(); };
         content.addAndMakeVisible (gear);
+        closeB.onClick = [this] { if (auto* peer = getPeer()) macwin::close (peer->getNativeHandle()); };
+        content.addChildComponent (closeB);
 
         setResizable (true, true);
         setResizeLimits ((int) (baseW * 0.5f), (int) (baseH * 0.5f), (int) (baseW * 1.6f), (int) (baseH * 1.6f));
@@ -408,6 +412,7 @@ public:
 
     ~ScaledEditor() override
     {
+        if (freeWindowOn) if (auto* peer = getPeer()) macwin::setFreeShape (peer->getNativeHandle(), false);
         anim.stopTimer();
         settings->removeChangeListener (this);
         setLookAndFeel (nullptr);
@@ -418,7 +423,16 @@ public:
         content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) baseW));
     }
 
-    void paint (juce::Graphics& g) override { g.fillAll (theme.bot); }
+    void paint (juce::Graphics& g) override { if (! freeWindowOn && ! previewFree()) g.fillAll (theme.bot); }
+    static bool previewFree() { static const bool b = juce::SystemStats::getEnvironmentVariable ("TCHK_FREE_PREVIEW", {}).isNotEmpty(); return b; }
+    void parentHierarchyChanged() override { updateFreeShapeSoon(); }
+    void visibilityChanged() override { updateFreeShapeSoon(); }
+    bool hitTest (int x, int y) override
+    {
+        if (! freeWindowOn || ! windowShape) return true;
+        const float k = (float) baseW / (float) juce::jmax (1, getWidth());
+        return windowShape().contains ((float) x * k, (float) y * k) || (settingsPanel != nullptr && settingsPanel->isVisible());
+    }
 
 protected:
     struct Layer : public juce::Component
@@ -432,8 +446,19 @@ protected:
         std::function<void (juce::Graphics&)> paintFn; // static drawing (panels, labels): cached
         std::function<void (juce::Graphics&)> overFn;  // changing texts, drawn above the static layer
         std::function<void()> layoutFn;
-        void paint (juce::Graphics& g) override { if (owner) owner->paintSky (g); }
+        void paint (juce::Graphics& g) override
+        {
+            if (owner == nullptr) return;
+            if (owner->windowShape) g.reduceClipRegion (owner->windowShape());
+            owner->paintSky (g);
+        }
         void resized() override { if (layoutFn) layoutFn(); }
+        // free-shape window: drag it by its background
+        void mouseDown (const juce::MouseEvent&) override
+        {
+            if (owner != nullptr && owner->freeWindowOn)
+                if (auto* peer = owner->getPeer()) macwin::startDrag (peer->getNativeHandle());
+        }
     };
 
     juce::SharedResourcePointer<UISettings> settings;
@@ -451,6 +476,52 @@ protected:
     std::function<void()> extraReset;               // called after "reset the plugin"
     std::function<float()> levelDb;                 // output level, makes the sky react to the music
     juce::OwnedArray<InfoIcon> infoIcons;
+    // the outline of the plugin, in design coordinates (set by the plugin before finishSetup).
+    // On the Mac in Ableton the window becomes transparent around it ("forme libre", see the settings).
+    std::function<juce::Path()> windowShape;
+    juce::Rectangle<int> closeBounds;               // the ✕ of a free-shape window (default: left of the gear)
+    bool freeWindowOn = false;
+    struct CloseButton : public juce::Button
+    {
+        CloseButton() : juce::Button ("close") { setTooltip ("Fermer"); }
+        void paintButton (juce::Graphics& g, bool over, bool) override
+        {
+            auto r = getLocalBounds().toFloat().reduced (4.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.45f)); g.fillEllipse (r.expanded (3.0f));
+            g.setColour (juce::Colours::white.withAlpha (over ? 1.0f : 0.75f));
+            g.drawLine (r.getX() + 4, r.getY() + 4, r.getRight() - 4, r.getBottom() - 4, 2.2f);
+            g.drawLine (r.getRight() - 4, r.getY() + 4, r.getX() + 4, r.getBottom() - 4, 2.2f);
+        }
+    };
+    CloseButton closeB;
+
+    void updateFreeShapeSoon()
+    {
+        juce::Component::SafePointer<ScaledEditor> safe (this);
+        for (int ms : { 50, 400, 1200 })
+            juce::Timer::callAfterDelay (ms, [safe] { if (safe != nullptr) safe->updateFreeShape(); });
+    }
+    void updateFreeShape()
+    {
+        auto* peer = getPeer();
+        const bool want = windowShape != nullptr && settings->freeShape() && peer != nullptr && isShowing()
+                          && juce::PluginHostType().isAbletonLive();
+        if (want == freeWindowOn) return;
+        bool ok = false;
+        if (want)
+        {
+            // every component up to the window must let the transparency through
+            for (juce::Component* c = this; c != nullptr; c = c->getParentComponent()) c->setOpaque (false);
+            ok = macwin::setFreeShape (peer->getNativeHandle(), true);
+        }
+        else if (peer != nullptr) macwin::setFreeShape (peer->getNativeHandle(), false);
+        freeWindowOn = want && ok;
+        closeB.setVisible (freeWindowOn);
+        if (resizableCorner != nullptr) resizableCorner->setVisible (! freeWindowOn);   // the corner grip would float outside the shape
+        if (! freeWindowOn) for (juce::Component* c = getParentComponent(); c != nullptr; c = c->getParentComponent()) c->setOpaque (true);
+        repaint();
+        staticLayer.repaint();
+    }
 
     juce::Colour panelBase() const { return theme.panel.withAlpha (0.78f); }
     void drawModuleT (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& name, juce::Colour accent, bool narrow = false) const { drawModule (g, r, name, accent, panelBase(), narrow); }
@@ -478,6 +549,7 @@ protected:
     {
         sky.setup (baseW, baseH, theme, seed, std::move (eyes));
         gear.setBounds (gearBounds);
+        closeB.setBounds (closeBounds.isEmpty() ? gearBounds.translated (-34, 0).expanded (2) : closeBounds);
         // never steal the keyboard from the host (Ableton's computer keyboard must keep playing notes)
         std::function<void (juce::Component&)> noFocus = [&noFocus] (juce::Component& c)
         {
@@ -491,6 +563,7 @@ protected:
         setWantsKeyboardFocus (false);
         for (auto* i : infoIcons) i->toFront (false);
         gear.toFront (false);
+        closeB.toFront (false);
         applySettings();
     }
 
@@ -539,6 +612,7 @@ private:
             t = 7.0;
         }
         for (auto* i : infoIcons) i->setVisible (settings->infoBubbles());
+        updateFreeShape();
         content.repaint();
     }
 

@@ -5,7 +5,48 @@ namespace music = tchk::music;
 
 namespace
 {
-    constexpr int kW = 880, kH = 652;
+    constexpr int kW = 880, kH = 736;
+    constexpr float baseY = 662.0f;   // where the melted bottom edge starts to drip
+    // the window is melting: soft wavy top, wobbly sides, drips of lava hanging from the bottom
+    struct Drip { float x, w, len; bool drop; };
+    const Drip drips[] = { { 96, 30, 34, false }, { 182, 22, 46, true }, { 262, 36, 26, false }, { 352, 24, 40, false }, { 448, 40, 52, true },
+                           { 560, 22, 28, false }, { 640, 32, 44, false }, { 742, 26, 36, true }, { 814, 26, 24, false } };
+    juce::Path meltedShape()
+    {
+        juce::Path p;
+        // top edge, left to right: big soft bumps
+        p.startNewSubPath (10, 60);
+        p.quadraticTo (8, 14, 52, 14);
+        const float tops[] = { 8, 20, 6, 16, 4, 18, 10, 22, 6 };
+        float x = 52;
+        for (int i = 0; i < 9; ++i) { const float nx = 52 + (828 - 52) * (float) (i + 1) / 9.0f; p.quadraticTo ((x + nx) * 0.5f, tops[i], nx, 14); x = nx; }
+        p.quadraticTo (872, 14, 870, 60);
+        // right side, a little wobbly
+        p.cubicTo (878, 220, 862, 420, 872, baseY - 40);
+        p.quadraticTo (874, baseY, 836, baseY);
+        // bottom: drips from right to left
+        for (int i = 8; i >= 0; --i)
+        {
+            const auto& d = drips[i];
+            const float l = d.x + d.w * 0.5f, r = d.x - d.w * 0.5f, bottom = baseY + d.len;
+            // a flared neck going down to a round heavy drop
+            const float neck = d.w * 0.2f, bulbY = bottom - d.w * 0.36f;
+            p.lineTo (l + 10, baseY);
+            p.cubicTo (l, baseY, d.x + neck, baseY + 6, d.x + neck, juce::jmin (bulbY, baseY + d.len * 0.5f));
+            p.lineTo (d.x + neck, bulbY);
+            p.lineTo (d.x - neck, bulbY);
+            p.lineTo (d.x - neck, juce::jmin (bulbY, baseY + d.len * 0.5f));
+            p.cubicTo (d.x - neck, baseY + 6, r, baseY, r - 10, baseY);
+        }
+        p.lineTo (44, baseY);
+        p.quadraticTo (6, baseY, 8, baseY - 40);
+        p.cubicTo (2, 420, 16, 220, 10, 60);
+        p.closeSubPath();
+        for (auto& d : drips) p.addEllipse (d.x - d.w * 0.38f, baseY + d.len - d.w * 0.74f, d.w * 0.76f, d.w * 0.76f);
+        // falling drops under some drips
+        for (auto& d : drips) if (d.drop) p.addEllipse (d.x - d.w * 0.22f, baseY + d.len + 8, d.w * 0.44f, d.w * 0.56f);
+        return p;
+    }
     const int styleSound[] = { 0, 3, 7, 14, 9, 6, 15, 10 }; // a sound that suits each style
 }
 
@@ -92,7 +133,9 @@ BasseEditor::BasseEditor (BasseProcessor& p)
     addInfo (854, 256, TK_FR ("La basse se cale sur tes accords, rien à brancher.||AVEC SUPERNOVA : active ce bouton, c'est tout. La basse prend tout de suite la tonalité et les accords de la grille de Supernova, et se refait à chaque fois que tu changes tes accords.|AVEC UN AUTRE INSTRUMENT : envoie ses notes MIDI sur cette piste et lance la lecture. Après un tour de boucle, la basse les suit."), TK_FR ("Suivre mes accords"));
     addInfo (556, 290, TK_FR ("Le son de la basse.||Flèches = son suivant / précédent, ou choisis dans la liste.|808 : la note tient puis s'éteint toute seule, parfaite en trap / drill.|SUB : son continu et rond.|PLUCK / FUNK / HOUSE : notes courtes et rebondissantes.|LONGUEUR = durée des notes. GLIDE = vitesse du glissé. SUB = une couche d'infrabasse une octave en dessous (à sentir plus qu'à entendre). GRAIN = harmoniques qui rendent la basse audible même sur un petit haut-parleur. GLISSANDOS = plus de notes qui glissent (et des sauts d'octave à fond) à la prochaine génération.|↶ REVENIR : remet la ligne de basse d'avant."), "Son");
     addInfo (472, 610, TK_FR ("Corrige la basse à la main.||Clic dans le vide = ajouter une note. Glisser une note = la déplacer. Bord droit = allonger. Re-clic sur une note sélectionnée = l'effacer. Suppr = effacer.|CMD + C / CMD + V = copier / coller (là où est la souris). CMD + X = couper. CMD + D = dupliquer la sélection juste après. CMD + Z = annuler, CMD + MAJ + Z = refaire (clique d'abord dans la grille).|OCTAVE − / + : toute la basse descend ou monte d'une octave (gardé pour les basses suivantes).|Les lignes allumées sont les notes de ta gamme (la plus claire = la tonique).|CLIC DROIT SUR UNE NOTE : glissé (la 808 glisse depuis la note d'avant, la courbe en pointillés le montre).|LECTURE : pas de bouton Écouter, la basse joue avec Ableton (barre d'espace) et recommence au début de ta boucle."), "Grille MIDI");
-    finishSetup (59, { { 250, 18, 34 }, { 580, 20, 28 } });
+    windowShape = [] { return meltedShape(); };
+    gearBounds = { 822, 34, 26, 26 };
+    finishSetup (59, {});
     refreshFromState();
     startTimerHz (30);
 }
@@ -133,6 +176,23 @@ void BasseEditor::paintContent (juce::Graphics& g)
 {
     namespace sh = tchk::shapes;
     sky.drawStaticStars (g);
+    // the molten edge: glowing inside the outline, the drips full of lava
+    {
+        const auto shape = meltedShape();
+        g.setColour (juce::Colour (0xffff7a3d).withAlpha (0.18f)); g.strokePath (shape, juce::PathStrokeType (26.0f));
+        g.setColour (pink.withAlpha (0.45f)); g.strokePath (shape, juce::PathStrokeType (8.0f));
+        juce::ColourGradient magma (juce::Colour (0xffff4d7d), 0, baseY - 26, juce::Colour (0xffffd27a), 0, baseY + 60, false);
+        magma.addColour (0.4, juce::Colour (0xffff8a3d));
+        g.setGradientFill (magma);
+        g.fillRect (0.0f, baseY - 22, 880.0f, 100.0f);
+        // the molten band is wavy where it meets the window
+        juce::Path crust; crust.startNewSubPath (0, baseY - 22);
+        for (int i = 0; i <= 22; ++i) crust.lineTo (40.0f * (float) i, baseY - 22 - 6.0f * std::abs (std::sin ((float) i * 1.3f)));
+        crust.lineTo (880, baseY - 40); crust.lineTo (0, baseY - 40); crust.closeSubPath();
+        g.setColour (juce::Colour (0xffff4d7d).withAlpha (0.5f)); g.fillPath (crust);
+        g.setColour (juce::Colour (0xfffff0c0).withAlpha (0.55f));
+        for (auto& d : drips) g.fillEllipse (d.x - d.w * 0.18f, baseY + d.len * 0.35f, d.w * 0.14f, d.len * 0.35f + 4.0f);
+    }
     // lava blobs holding the controls
     sh::drawLavaPanel (g, { 22, 58, 296, 346 }, pink, 12);
     sh::drawLavaPanel (g, { 622, 58, 246, 312 }, pink, 31);
@@ -149,9 +209,9 @@ void BasseEditor::paintContent (juce::Graphics& g)
     auto dim = [&] (const juce::String& txt, int x, int y, int w = 200, float size = 12.0f, bool bold = true, juce::Justification j = juce::Justification::centredLeft)
     { g.setColour (LNF::textDim); g.setFont (LNF::font (size, bold)); g.drawText (txt, x, y, w, 18, j); };
     g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
-    g.drawText ("T C H I S K I B I D I", 18, 12, 300, 14, juce::Justification::centredLeft);
+    g.drawText ("T C H I S K I B I D I", 36, 22, 300, 14, juce::Justification::centredLeft);
     g.setColour (juce::Colour (0xffffb0c4)); g.setFont (LNF::font (28.0f));
-    g.drawText ("FUSION", 18, 24, 300, 32, juce::Justification::centredLeft);
+    g.drawText ("FUSION", 36, 32, 300, 30, juce::Justification::centredLeft);
     dim (TK_FR ("TONALITÉ"), 46, 64);
     dim ("GAMME", 46, 312, 80, 11.0f);
     dim ("STYLE", 640, 66);

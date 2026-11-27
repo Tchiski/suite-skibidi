@@ -13,6 +13,39 @@ namespace
     const float hi[] = { 0.9f, 0.9f, 0.9f, 0.9f, 0.8f, 1.0f, 0.7f, 0.4f, 0.35f, 1.0f, 0.6f, 0.6f };
 }
 
+namespace
+{
+    // Milky Way: everything turns around the planet
+    constexpr float ocx = 440.0f, ocy = 346.0f, orx = 300.0f, ory = 186.0f;
+    // the window: a round galaxy (superellipse) crossed by a ring that sticks out on both sides
+    constexpr float dcx = 440.0f, dcy = 330.0f, drx = 400.0f, dry = 322.0f;
+    juce::Path galaxyDisc()
+    {
+        juce::Path p;
+        for (int i = 0; i <= 160; ++i)
+        {
+            const float a = juce::MathConstants<float>::twoPi * (float) i / 160.0f, c = std::cos (a), s2 = std::sin (a);
+            const juce::Point<float> q (dcx + drx * std::copysign (std::pow (std::abs (c), 0.5f), c), dcy + dry * std::copysign (std::pow (std::abs (s2), 0.5f), s2));
+            if (i == 0) p.startNewSubPath (q); else p.lineTo (q);
+        }
+        p.closeSubPath();
+        return p;
+    }
+    juce::Path galaxyRing()
+    {
+        juce::Path e; e.addEllipse (2.0f, ocy - 62.0f, 876.0f, 124.0f);
+        e.applyTransform (juce::AffineTransform::rotation (-0.09f, 440.0f, ocy));
+        juce::Path band; juce::PathStrokeType (16.0f).createStrokedPath (band, e);
+        return band;
+    }
+    juce::Point<float> knobCentre (int i)
+    {
+        // 12 settings on the big orbit, starting at the top and going round clockwise (display order kept)
+        const float a = juce::degreesToRadians (-75.0f + 30.0f * (float) i);
+        return { ocx + orx * std::cos (a), ocy + ory * std::sin (a) };
+    }
+}
+
 SynthEditor::SynthEditor (SynthProcessor& p)
     : tchk::ScaledEditor (p, kW, kH, 0.9f, "synth"),
       audioProcessor (p),
@@ -66,58 +99,73 @@ SynthEditor::SynthEditor (SynthProcessor& p)
     for (juce::Component* c : std::initializer_list<juce::Component*> { &orb, &prevB, &nextB, &linkB, &monoB, &demoB, &backB, &volume, &comet, &presetBox, &heartButton })
         content.addAndMakeVisible (c);
     layout();
-    addInfo (74, 74, TK_FR ("Choisis une famille, puis un son.||Les familles en haut : pads, plucks, leads, cordes, basses, keys, cloches, effets (152 sons en tout).|Les flèches de chaque côté de la sphère passent au son suivant. Clique la sphère pour voir toute la liste et choisir directement.|Joue avec ton clavier MIDI ou le clavier de l'ordinateur d'Ableton (touche M)."), TK_FR ("Sons"));
-    addInfo (652, 590, TK_FR ("Milky Way joue tes accords, rien à brancher.||Mets Tchiskibidi Supernova sur une piste et ce Milky Way sur une autre. Active « Jouer mes accords » : Milky Way joue la grille de Supernova avec la lecture d'Ableton (barre d'espace), et suit chaque changement.|Mets le son de Supernova sur « Muet (MIDI seul) » pour n'entendre que Milky Way. Tu peux en mettre plusieurs (un pad, des cloches...) : ils jouent tous les mêmes accords.|Si tu as plusieurs Supernova dans ton projet, c'est le dernier modifié qui compte."), TK_FR ("Jouer mes accords"));
-    addInfo (488, 432, TK_FR ("Retouche le son.||Ces 12 réglages marchent sur tous les sons. Fais tourner le soleil autour de chaque planète.|BRILLANCE : plus sombre ou plus brillant. ESPACE : la réverbération. MOUVEMENT : le son ondule. ATTAQUE : le son arrive d'un coup ou doucement.|HASARD : la comète au centre tire des réglages au hasard, dans des limites qui sonnent toujours bien. ↶ REVENIR remet le son d'avant (tu peux reculer plusieurs fois).|♥ GARDER : enregistre le son tel quel avec un nom. Tu le retrouves dans « Mes sons »."), TK_FR ("Réglages"));
-    finishSetup (47, { { 230, 14, 40 }, { 320, 30, 28 }, { 560, 12, 34 } });
+    addInfo (594, 22, TK_FR ("Choisis une famille, puis un son.||Les familles en haut : pads, plucks, leads, cordes, basses, keys, cloches, effets (152 sons en tout).|Les flèches de chaque côté de la sphère passent au son suivant. Clique la sphère pour voir toute la liste et choisir directement.|Joue avec ton clavier MIDI ou le clavier de l'ordinateur d'Ableton (touche M)."), TK_FR ("Sons"));
+    addInfo (600, 562, TK_FR ("Milky Way joue tes accords, rien à brancher.||Mets Tchiskibidi Supernova sur une piste et ce Milky Way sur une autre. Active « Jouer mes accords » : Milky Way joue la grille de Supernova avec la lecture d'Ableton (barre d'espace), et suit chaque changement.|Mets le son de Supernova sur « Muet (MIDI seul) » pour n'entendre que Milky Way. Tu peux en mettre plusieurs (un pad, des cloches...) : ils jouent tous les mêmes accords.|Si tu as plusieurs Supernova dans ton projet, c'est le dernier modifié qui compte."), TK_FR ("Jouer mes accords"));
+    addInfo (488, 424, TK_FR ("Retouche le son.||Ces 12 réglages marchent sur tous les sons. Fais tourner le soleil autour de chaque planète.|BRILLANCE : plus sombre ou plus brillant. ESPACE : la réverbération. MOUVEMENT : le son ondule. ATTAQUE : le son arrive d'un coup ou doucement.|HASARD : la comète au centre tire des réglages au hasard, dans des limites qui sonnent toujours bien. ↶ REVENIR remet le son d'avant (tu peux reculer plusieurs fois).|♥ GARDER : enregistre le son tel quel avec un nom. Tu le retrouves dans « Mes sons »."), TK_FR ("Réglages"));
+    windowShape = []
+    {
+        auto shape = galaxyDisc();
+        shape.addPath (galaxyRing());
+        shape.setUsingNonZeroWinding (true);
+        return shape;
+    };
+    gearBounds = { 690, 30, 26, 26 };
+    finishSetup (47, {});
     refreshPresetUI();
     startTimerHz (30);
 }
 
 SynthEditor::~SynthEditor() { stopTimer(); }
 
-namespace
-{
-    // Milky Way: everything turns around the planet
-    constexpr float ocx = 440.0f, ocy = 352.0f, orx = 330.0f, ory = 200.0f;
-    juce::Point<float> knobCentre (int i)
-    {
-        // 12 settings on the big orbit, starting at the top and going round clockwise (display order kept)
-        const float a = juce::degreesToRadians (-75.0f + 30.0f * (float) i);
-        return { ocx + orx * std::cos (a), ocy + ory * std::sin (a) };
-    }
-}
-
 void SynthEditor::layout()
 {
-    // families on a gentle arch at the top
+    // families on an arch that follows the round window
     std::vector<int> cw; int total = 0;
-    for (auto* c : catChips) { const int w = 18 + (int) (6.6f * (float) c->getButtonText().length()); cw.push_back (w); total += w + 4; }
+    for (auto* c : catChips) { const int w = 16 + (int) (6.4f * (float) c->getButtonText().length()); cw.push_back (w); total += w + 4; }
     float x = (float) (kW - total) * 0.5f;
     for (int i = 0; i < catChips.size(); ++i)
     {
-        const float cxp = x + (float) cw[(size_t) i] * 0.5f, dx = (cxp - 440.0f) / 420.0f;
-        catChips[i]->fontSize = 11.5f;
-        catChips[i]->setBounds ((int) x, (int) (64.0f + dx * dx * 26.0f), cw[(size_t) i], 28);
+        const float cxp = x + (float) cw[(size_t) i] * 0.5f, dx = (cxp - 440.0f) / 360.0f;
+        catChips[i]->fontSize = 11.0f;
+        catChips[i]->setBounds ((int) x, (int) (62.0f + dx * dx * 64.0f), cw[(size_t) i], 26);
         x += (float) cw[(size_t) i] + 4.0f;
     }
     orb.setBounds (440 - 210, (int) ocy - 152, 420, 280);
-    prevB.setBounds (440 - 232, (int) ocy - 33, 40, 40); nextB.setBounds (440 + 192, (int) ocy - 33, 40, 40);
-    volume.setBounds (30, 104, 60, 150);
+    prevB.setBounds (440 - 222, (int) ocy - 33, 40, 40); nextB.setBounds (440 + 182, (int) ocy - 33, 40, 40);
+    volume.setBounds (46, 250, 58, 150);
     for (int i = 0; i < 12; ++i) { const auto c = knobCentre (i); knobs[i]->setBounds ((int) c.x - 42, (int) c.y - 44, 84, 84); }
-    comet.setBounds (392, 426, 96, 78);
-    backB.setBounds (398, 512, 84, 22);
-    heartButton.setBounds (652, 120, 26, 26);
-    presetBox.setBounds (684, 120, 166, 26);
-    for (int i = 0; i < octChips.size(); ++i) { octChips[i]->shape = tchk::Chip::moon; octChips[i]->moonPhase = i - 2; octChips[i]->setBounds (104 + i * 40, 596, 34, 34); }
-    monoB.setBounds (318, 598, 64, 30);
-    linkB.setBounds (450, 588, 198, 30);
-    demoB.setBounds (676, 592, 176, 34);
+    comet.setBounds (392, 418, 96, 76);
+    backB.setBounds (398, 498, 84, 22);
+    heartButton.setBounds (712, 202, 24, 24);
+    presetBox.setBounds (740, 202, 96, 26);
+    int bx = 143;
+    for (int i = 0; i < octChips.size(); ++i) { octChips[i]->shape = tchk::Chip::moon; octChips[i]->moonPhase = i - 2; octChips[i]->setBounds (bx + 52 + i * 34, 586, 30, 30); }
+    bx += 52 + 5 * 34 + 8;
+    monoB.setBounds (bx, 586, 54, 30); bx += 62;
+    linkB.setBounds (bx, 586, 170, 30); bx += 178;
+    demoB.setBounds (bx, 586, 124, 30);
 }
 
 void SynthEditor::paintContent (juce::Graphics& g)
 {
     sky.drawStaticStars (g);
+    // the ring around the galaxy (it sticks out of the round window)
+    {
+        const auto ring = galaxyRing();
+        const juce::ColourGradient rg (juce::Colour (0xffffe2cc), 0, ocy, juce::Colour (0xffff8a3d), 880, ocy, false);
+        // faint inside the galaxy (the settings stay readable), bright where it sticks out
+        g.setGradientFill (rg); g.setOpacity (0.22f); g.fillPath (ring);
+        {
+            juce::Path outside; outside.addRectangle (0, 0, 880, 700); outside.addPath (galaxyDisc()); outside.setUsingNonZeroWinding (false);
+            g.saveState(); g.reduceClipRegion (outside);
+            g.setGradientFill (rg); g.setOpacity (0.95f); g.fillPath (ring);
+            g.setColour (juce::Colours::white.withAlpha (0.5f)); g.strokePath (ring, juce::PathStrokeType (0.8f));
+            g.restoreState();
+        }
+        g.setOpacity (1.0f);
+        // edge of the galaxy
+        g.setColour (orange.withAlpha (0.35f)); g.strokePath (galaxyDisc(), juce::PathStrokeType (3.0f));
+    }
     // a band of milky way across the window
     {
         juce::Path band; band.addEllipse (-120, ocy - 60, 1120, 120);
@@ -145,14 +193,14 @@ void SynthEditor::paintContent (juce::Graphics& g)
     orbit (orx - 70, ory - 52, 0.20f, 5.0f);
     orbit (orx - 130, ory - 96, 0.12f, 3.0f);
     // title
-    g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
-    g.drawText ("T C H I S K I B I D I", 18, 12, 300, 14, juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xffffe2cc)); g.setFont (LNF::font (28.0f));
-    g.drawText ("MILKY WAY", 18, 24, 300, 32, juce::Justification::centredLeft);
+    g.setColour (juce::Colour (0xffffe2cc)); g.setFont (LNF::font (24.0f));
+    g.drawText ("MILKY WAY", 290, 16, 300, 28, juce::Justification::centred);
+    g.setColour (LNF::textDim); g.setFont (LNF::font (9.0f));
+    g.drawText ("T C H I S K I B I D I", 290, 42, 300, 12, juce::Justification::centred);
     g.setColour (orange); g.setFont (LNF::font (11.0f));
-    g.drawText ("HASARD", 392, 494, 96, 14, juce::Justification::centred);
+    g.drawText ("HASARD", 392, 484, 96, 14, juce::Justification::centred);
     g.setColour (LNF::textDim); g.setFont (LNF::font (11.0f));
-    g.drawText ("OCTAVE", 36, 604, 64, 18, juce::Justification::centredLeft);
+    g.drawText ("OCTAVE", 143, 592, 52, 18, juce::Justification::centredLeft);
 }
 
 void SynthEditor::overContent (juce::Graphics& g)
