@@ -494,7 +494,6 @@ public:
         addToggle (animToggle, settings->animations(), [this] (bool v) { settings->set ("animations", v); });
         addToggle (reactToggle, settings->reactive(), [this] (bool v) { settings->set ("reactive", v); });
         addToggle (infoToggle, settings->infoBubbles(), [this] (bool v) { settings->set ("info", v); });
-        addToggle (shapeToggle, settings->freeShape(), [this] (bool v) { settings->set ("freeshape", v); });
 
         fpsBox.addItemList (juce::StringArray { TK_FR ("Éco (12 i/s)"), juce::String ("Normale (24 i/s)"), juce::String ("Fluide (40 i/s)") }, 1);
         const int fps = settings->fps();
@@ -576,7 +575,6 @@ public:
         row (TK_FR ("Fluidité des animations"), fpsBox, 160);
         row (TK_FR ("Ciel réactif à la musique"), reactToggle, 70);
         row (TK_FR ("Bulles d'info « i »"), infoToggle, 70);
-        row (TK_FR ("Fenêtre en forme libre (Mac)"), shapeToggle, 70);
         row (TK_FR ("Taille de la fenêtre"), scaleBox, 110);
         for (int i = 0; i < extraBoxes.size(); ++i)
             row (extras[(size_t) i].label, *extraBoxes[i], 190);
@@ -595,7 +593,7 @@ public:
 private:
     juce::Rectangle<int> cardBounds() const
     {
-        const int hgt = 54 + 34 * (6 + (int) extras.size()) + 8 + 30 + 8 + 30 + 22 + 32;
+        const int hgt = 54 + 34 * (5 + (int) extras.size()) + 8 + 30 + 8 + 30 + 22 + 32;
         return getLocalBounds().withSizeKeepingCentre (juce::jmin (420, getWidth() - 20), juce::jmin (hgt, getHeight() - 20));
     }
 

@@ -55,7 +55,6 @@ TchiskibidiSpaceEditor::TchiskibidiSpaceEditor (TchiskibidiSpaceProcessor& p)
     layout();
     windowShape = [] { return rocketShape(); };
     gearBounds = { 810, 98, 26, 26 };
-    closeBounds = { 808, 132, 30, 30 };
     finishSetup (11, {});
     startTimerHz (30);
 }
