@@ -50,6 +50,10 @@ public:
 
     // planet with a sun orbiting around it (dry/wet, mix)
     Knob& asOrbit() { slider.getProperties().set ("tk", "orbit"); return *this; }
+    // drop of magma (Fusion)
+    Knob& asLava() { slider.getProperties().set ("tk", "lava"); return *this; }
+    // rocket porthole (Space)
+    Knob& asPorthole() { slider.getProperties().set ("tk", "porthole"); return *this; }
     // rocket fader (volumes): vertical slider, the rocket climbs with the value
     Knob& asRocket()
     {

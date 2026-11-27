@@ -5,14 +5,14 @@
 #include "TchiskibidiSounds.h"
 #include "TchiskibidiLink.h"
 
-// Tchiskibidi Basse: 808 and bass lines in a key and a style, played with the host transport.
-// "Suivre mes accords": listens to the chords coming in as MIDI (e.g. from Tchiskibidi Accords) and follows them.
+// Tchiskibidi Fusion: 808 and bass lines in a key and a style, played with the host transport.
+// "Suivre mes accords": listens to the chords coming in as MIDI (e.g. from Tchiskibidi Supernova) and follows them.
 class BasseProcessor : public tchk::InstrumentProcessor, private juce::Timer
 {
 public:
     BasseProcessor();
     ~BasseProcessor() override { stopTimer(); }
-    const juce::String getName() const override { return "Tchiskibidi Basse"; }
+    const juce::String getName() const override { return "Tchiskibidi Fusion"; }
     juce::AudioProcessorEditor* createEditor() override;
 
     juce::AudioProcessorValueTreeState apvts;

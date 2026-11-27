@@ -51,6 +51,10 @@ jobs:
           rm -rf "/Users/$U/Library/Audio/Plug-Ins/VST3/Tchiskibidi "* "/Users/$U/Library/Audio/Plug-Ins/Components/Tchiskibidi "*
           # Accords is VST3 only (its MIDI output must reach other tracks in Ableton): remove the old AU
           rm -rf "/Library/Audio/Plug-Ins/Components/Tchiskibidi Accords.component"
+          # renamed plugins (Accords -> Supernova, Synthe -> Milky Way, Basse -> Fusion): remove the old copies, same plugin inside
+          for old in "Tchiskibidi Accords" "Tchiskibidi Synthe" "Tchiskibidi Basse"; do
+            rm -rf "/Library/Audio/Plug-Ins/VST3/$old.vst3" "/Library/Audio/Plug-Ins/Components/$old.component"
+          done
           xattr -cr /Library/Audio/Plug-Ins/VST3 /Library/Audio/Plug-Ins/Components 2>/dev/null
           killall -9 AudioComponentRegistrar 2>/dev/null
           exit 0

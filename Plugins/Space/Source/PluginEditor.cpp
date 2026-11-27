@@ -29,15 +29,16 @@ TchiskibidiSpaceEditor::TchiskibidiSpaceEditor (TchiskibidiSpaceProcessor& p)
     content.layoutFn = [this] { layout(); };
     levelDb = [&p] { return p.outputPeakDb.load(); };
     mix.asOrbit(); output.asRocket();
+    for (auto* k : { &time, &feedback, &wobble, &echoLevel, &lowCut, &highCut, &size, &damping, &width, &reverbLevel }) k->asPorthole();
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              &time, &feedback, &wobble, &echoLevel, &lowCut, &highCut, &size, &damping, &width, &reverbLevel, &mix, &output,
              &syncButton, &pingPongButton, &divisionBox, &xyPad, &echoView, &nebulaView, &inMeter, &outMeter })
         content.addAndMakeVisible (c);
 
-    addInfo (18 + 16 + 56, 88 + 13, TK_FR ("Glisse le point du pad pour régler l'écho.||Répète ton son. Glisse le point du pad XY : vers la droite les échos sont plus espacés, vers le haut il y a plus de répétitions. SYNC cale l'écho sur le tempo du morceau, PING-PONG le fait voyager de gauche à droite."));
-    addInfo (436 + 16 + 78, 88 + 13, TK_FR ("Ajoute de l'espace autour du son.||Ajoute de l'espace. SIZE = taille de la pièce (la nébuleuse grandit), DAMPING = queue plus sombre, WIDTH = largeur stéréo, LEVEL = volume de la réverb."));
-    addInfo (674 + 16 + 80, 88 + 13, TK_FR ("Dose d'effet et volume final.||MIX dose le son d'origine et l'effet (0 % = sans effet). OUTPUT = volume final."));
+    addInfo (122, 102, TK_FR ("Glisse le point du pad pour régler l'écho.||Répète ton son. Glisse le point du pad XY : vers la droite les échos sont plus espacés, vers le haut il y a plus de répétitions. SYNC cale l'écho sur le tempo du morceau, PING-PONG le fait voyager de gauche à droite."));
+    addInfo (540, 102, TK_FR ("Ajoute de l'espace autour du son.||Ajoute de l'espace. SIZE = taille de la pièce (la nébuleuse grandit), DAMPING = queue plus sombre, WIDTH = largeur stéréo, LEVEL = volume de la réverb."));
+    addInfo (778, 102, TK_FR ("Dose d'effet et volume final.||MIX dose le son d'origine et l'effet (0 % = sans effet). OUTPUT = volume final."));
 
     layout();
     finishSetup (11, { { 250, 22, 54 }, { 330, 44, 34 }, { 420, 18, 40 }, { 520, 12, 44 }, { 610, 36, 30 }, { 700, 16, 38 } });
@@ -50,9 +51,9 @@ void TchiskibidiSpaceEditor::layout()
     reverbArea = { 436, 88, 224, 534 };
     masterArea = { 674, 88, 168, 534 };
 
-    xyPad.setBounds (30, 122, 140, 120);
-    echoView.setBounds (180, 122, 230, 120);
-    nebulaView.setBounds (448, 122, 200, 120);
+    xyPad.setBounds (34, 134, 136, 104);
+    echoView.setBounds (184, 132, 222, 92);
+    nebulaView.setBounds (490, 128, 116, 116);
     inMeter.setBounds (738, 124, 10, 110);
     outMeter.setBounds (754, 124, 10, 110);
 
@@ -87,23 +88,71 @@ void TchiskibidiSpaceEditor::paintContent (juce::Graphics& g)
     g.drawText ("SPACE", 18, 36, 400, 40, juce::Justification::centredLeft);
     g.setColour (LNF::textDim);
     g.setFont (LNF::font (12.0f, false));
-    g.drawText ("echo + reverb  |  v0.3", 432, 60, 400, 16, juce::Justification::centredRight);
+    g.drawText ("echo + reverb", 432, 60, 400, 16, juce::Justification::centredRight);
 
-    auto spPanel = [this, &g] (juce::Rectangle<int> r, const char* title, juce::Colour accent)
+    // the rocket: a capsule hull with fins, riveted seams, the windows set into it
+    const juce::Colour steel (0xff1a2b48);
     {
-        const auto rf = r.toFloat();
-        g.setColour (theme.panel.withAlpha (0.72f));
-        g.fillRoundedRectangle (rf, 16.0f);
-        g.setColour (accent.withAlpha (0.35f));
-        g.drawRoundedRectangle (rf.reduced (0.5f), 16.0f, 1.2f);
-        g.setColour (accent);
-        g.setFont (LNF::font (15.0f));
-        g.drawText (title, r.reduced (16, 12).removeFromTop (20), juce::Justification::centredLeft);
+        juce::Path finT; finT.startNewSubPath (250, 92); finT.lineTo (300, 58); finT.lineTo (400, 58); finT.lineTo (390, 92); finT.closeSubPath();
+        juce::Path finB; finB.startNewSubPath (250, 620); finB.lineTo (300, 638); finB.lineTo (400, 638); finB.lineTo (390, 620); finB.closeSubPath();
+        for (auto* f : { &finT, &finB })
+        {
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff7ae6), 280, 56, juce::Colour (0xff8a2a9a), 400, 100, false)); g.fillPath (*f);
+            g.setColour (juce::Colours::white.withAlpha (0.3f)); g.strokePath (*f, juce::PathStrokeType (1.2f));
+        }
+        juce::Path hull; hull.addRoundedRectangle (14, 88, 832, 540, 70);
+        g.setColour (LNF::cyan.withAlpha (0.12f)); g.strokePath (hull, juce::PathStrokeType (10.0f));
+        juce::ColourGradient hg (juce::Colour (0xff2a4068).withAlpha (0.92f), 0, 88, juce::Colour (0xff0a1224).withAlpha (0.94f), 0, 628, false);
+        hg.addColour (0.12, juce::Colour (0xff3a5a88).withAlpha (0.92f));
+        g.setGradientFill (hg); g.fillPath (hull);
+        g.saveState(); g.reduceClipRegion (hull);
+        // hull plates: thin lines and rivets
+        auto seam = [&] (float x)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.45f)); g.fillRect (x - 1.5f, 88.0f, 3.0f, 540.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.08f)); g.fillRect (x + 1.5f, 88.0f, 1.0f, 540.0f);
+            for (float y = 104.0f; y < 620.0f; y += 22.0f)
+            {
+                g.setGradientFill (juce::ColourGradient (juce::Colour (0xffd8ecff), x - 2, y - 2, juce::Colour (0xff2a4060), x + 2, y + 2, false));
+                g.fillEllipse (x - 2.5f, y - 2.5f, 5.0f, 5.0f);
+            }
+        };
+        seam (429.0f); seam (667.0f);
+        for (float y : { 95.0f, 620.0f })
+            for (float x = 90.0f; x < 790.0f; x += 26.0f)
+            { g.setColour (juce::Colour (0xffb8d8f0).withAlpha (0.55f)); g.fillEllipse (x - 2, y - 2, 4, 4); }
+        g.setColour (juce::Colours::white.withAlpha (0.06f)); g.fillRect (14.0f, 100.0f, 832.0f, 30.0f);
+        g.restoreState();
+        g.setColour (juce::Colour (0xffb8d8f0).withAlpha (0.6f)); g.strokePath (hull, juce::PathStrokeType (1.5f));
+    }
+    // riveted rings around the windows
+    auto ring = [&] (juce::Path shape, float thick)
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.5f)); g.strokePath (shape, juce::PathStrokeType (thick + 4.0f), juce::AffineTransform::translation (0, 2));
+        const auto b = shape.getBounds();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffd0e8ff), b.getX(), b.getY(), juce::Colour (0xff23415f), b.getRight(), b.getBottom(), false));
+        g.strokePath (shape, juce::PathStrokeType (thick));
+        const float len = shape.getLength();
+        for (float d = 0; d < len; d += 18.0f)
+        {
+            const auto p = shape.getPointAlongPath (d);
+            g.setColour (juce::Colour (0xffeaf6ff)); g.fillEllipse (p.x - 1.8f, p.y - 1.8f, 3.6f, 3.6f);
+        }
     };
-    spPanel (echoArea, "ECHO", LNF::pink);
-    spPanel (reverbArea, "REVERB", LNF::cyan);
-    spPanel (masterArea, "MASTER", LNF::lime);
-
+    { juce::Path p; p.addEllipse (nebulaView.getBounds().toFloat().expanded (6.0f)); ring (p, 11.0f); }
+    { juce::Path p; p.addRoundedRectangle (echoView.getBounds().toFloat().expanded (5.0f), 51.0f); ring (p, 9.0f); }
+    { juce::Path p; p.addRoundedRectangle (xyPad.getBounds().toFloat().expanded (4.0f), 12.0f); ring (p, 7.0f); }
+    // section plates
+    auto plate = [&] (int x, int y, const char* title, juce::Colour accent)
+    {
+        juce::Rectangle<float> r ((float) x, (float) y, 84.0f, 22.0f);
+        g.setColour (juce::Colour (0xff0a1426)); g.fillRoundedRectangle (r, 5.0f);
+        g.setColour (accent.withAlpha (0.7f)); g.drawRoundedRectangle (r, 5.0f, 1.2f);
+        g.setColour (accent); g.setFont (LNF::font (13.0f)); g.drawText (title, r, juce::Justification::centred);
+    };
+    plate (34, 100, "ECHO", LNF::pink);
+    plate (452, 100, "REVERB", LNF::cyan);
+    plate (690, 100, "MASTER", LNF::lime);
     g.setColour (LNF::textDim);
     g.setFont (LNF::font (9.0f));
     g.drawText (TK_FR ("TIME →    ↑ FEEDBACK"), 30, 244, 140, 12, juce::Justification::centred);
@@ -200,8 +249,11 @@ void TchiskibidiSpaceEditor::EchoView::paint (juce::Graphics& g)
 {
     auto& s = proc.apvts;
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.fillRoundedRectangle (r, 8.0f);
+    // a long capsule window
+    juce::Path win; win.addRoundedRectangle (r, r.getHeight() * 0.5f);
+    g.reduceClipRegion (win);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff12284a), r.getCentreX(), r.getCentreY(), juce::Colour (0xff030812), r.getRight(), r.getBottom(), true));
+    g.fillPath (win);
     const float w = r.getWidth(), h = r.getHeight();
 
     const bool pp = value (s, "pingpong") > 0.5f, sync = value (s, "sync") > 0.5f;
@@ -255,8 +307,11 @@ void TchiskibidiSpaceEditor::NebulaView::paint (juce::Graphics& g)
 {
     auto& s = proc.apvts;
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.fillRoundedRectangle (r, 8.0f);
+    // the big round porthole: the reverb seen through the window
+    juce::Path win; win.addEllipse (r);
+    g.reduceClipRegion (win);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff14305a), r.getCentreX(), r.getCentreY() + 10, juce::Colour (0xff050a18), r.getRight(), r.getBottom(), true));
+    g.fillPath (win);
     const float sz = value (s, "size"), damp = value (s, "damping"), wid = value (s, "width"), lvl = value (s, "reverblevel");
     const float R = 22.0f + sz * 58.0f, sx = 0.55f + wid * 0.75f, bright = 1.0f - damp * 0.7f;
     const auto c = r.getCentre();
@@ -274,5 +329,8 @@ void TchiskibidiSpaceEditor::NebulaView::paint (juce::Graphics& g)
     }
     g.setColour (LNF::textDim);
     g.setFont (LNF::font (9.0f));
-    g.drawText ("TAILLE " + juce::String (juce::roundToInt (sz * 100.0f)) + " %", 8, (int) r.getHeight() - 16, 100, 12, juce::Justification::centredLeft);
+    g.drawText ("TAILLE " + juce::String (juce::roundToInt (sz * 100.0f)) + " %", 0, (int) r.getHeight() - 26, (int) r.getWidth(), 12, juce::Justification::centred);
+    g.setColour (juce::Colours::white.withAlpha (0.10f));
+    juce::Path refl; refl.addCentredArc (c.x, c.y, r.getWidth() * 0.4f, r.getHeight() * 0.4f, 0.0f, -2.3f, -0.8f, true);
+    g.strokePath (refl, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }

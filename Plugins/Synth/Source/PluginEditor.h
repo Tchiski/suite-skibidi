@@ -33,6 +33,7 @@ private:
         std::function<void()> onClick;
         void paint (juce::Graphics& g) override;
         void mouseDown (const juce::MouseEvent&) override { if (onClick) onClick(); }
+        bool hitTest (int x, int y) override { return getLocalBounds().toFloat().getCentre().getDistanceFrom ({ (float) x, (float) y }) < 100.0f; }
     };
     Orb orb;
     void openList();

@@ -97,7 +97,7 @@ std::vector<std::array<float, 12>> BasseProcessor::takeFollowed()
 void BasseProcessor::timerCallback()
 {
     if (getInt ("follow", 0) == 0) { linkFollower.reset(); linkUsed = false; return; }
-    // 1) Lien: the chords of Tchiskibidi Accords, nothing to route in the DAW
+    // 1) Lien: the chords of Tchiskibidi Supernova, nothing to route in the DAW
     tchk::link::Data d;
     if (linkFollower.poll (d))
     {

@@ -5,14 +5,14 @@
 #include "TchiskibidiSounds.h"
 #include "TchiskibidiLink.h"
 
-// Tchiskibidi Accords: generates chord progressions in a key, plays them with the host
+// Tchiskibidi Supernova: generates chord progressions in a key, plays them with the host
 // transport (and sends them out as MIDI), can listen to your tracks to propose a matching progression.
 class AccordsProcessor : public tchk::InstrumentProcessor, private juce::Timer
 {
 public:
     AccordsProcessor();
     ~AccordsProcessor() override { stopTimer(); }
-    const juce::String getName() const override { return "Tchiskibidi Accords"; }
+    const juce::String getName() const override { return "Tchiskibidi Supernova"; }
     juce::AudioProcessorEditor* createEditor() override;
 
     juce::AudioProcessorValueTreeState apvts;

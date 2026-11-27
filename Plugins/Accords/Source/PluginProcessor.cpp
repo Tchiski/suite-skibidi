@@ -15,7 +15,7 @@ AccordsProcessor::AccordsProcessor()
     startTimerHz (4);
 }
 
-// Lien: each time the progression changes, it is written for Tchiskibidi Synthé and Basse
+// Lien: each time the progression changes, it is written for Tchiskibidi Milky Way and Basse
 void AccordsProcessor::timerCallback()
 {
     const auto sig = apvts.state.getProperty ("notes").toString() + "|" + juce::String (totalSteps()) + "|" + juce::String (getInt ("root", 9)) + "|" + juce::String (getInt ("scale", 1));

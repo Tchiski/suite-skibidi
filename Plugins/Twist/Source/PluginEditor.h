@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "TchiskibidiInstrumentUI.h"
 #include "TchiskibidiPresets.h"
+#include "TwistStickers.h"
 
 class TwistEditor : public tchk::ScaledEditor, private juce::Timer, private juce::ScrollBar::Listener
 {
@@ -46,7 +47,8 @@ private:
     int viewBars = 16;
     Timeline timeline { *this };
     juce::ScrollBar scroll { false };
-    juce::OwnedArray<tchk::Chip> fxChips, zoomChips, densChips;
+    juce::OwnedArray<twist::Sticker> fxChips;
+    juce::OwnedArray<tchk::Chip> zoomChips, densChips;
     juce::Slider amount, curve, mix;
     tchk::Chip delB { "Effacer", coral }, sprinkleB { TK_FR ("☄ Saupoudrer"), coral }, followB { "Suivre la lecture", coral }, magnetB { "Aimant : sur les coups", coral };
     bool magnet = true;

@@ -1,6 +1,6 @@
 juce_add_plugin(TchiskibidiSynth
     COMPANY_NAME "Tchiskibidi"
-    PRODUCT_NAME "Tchiskibidi Synthe"
+    PRODUCT_NAME "Tchiskibidi Milky Way"
     BUNDLE_ID com.tchiskibidi.synth
     PLUGIN_MANUFACTURER_CODE Tchk
     PLUGIN_CODE Tsyn

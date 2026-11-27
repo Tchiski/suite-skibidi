@@ -5,6 +5,7 @@
 
 #include "TchiskibidiWidgets.h"
 #include "TchiskibidiInstrument.h"
+#include "TchiskibidiShapes.h"
 #include <set>
 
 namespace tchk
@@ -18,17 +19,66 @@ public:
     Chip (const juce::String& label, juce::Colour accentIn) : juce::Button (label), accent (accentIn) {}
     juce::Colour accent;
     float fontSize = 13.0f;
+    enum Shape { pill, hex, pebble, moon };
+    Shape shape = pill;
+    int moonPhase = 0;          // moon: -2..2 (how much of the moon is lit)
+    bool onLight = false;       // drawn on a light background (pearl band)
     void paintButton (juce::Graphics& g, bool over, bool down) override
     {
         auto r = getLocalBounds().toFloat().reduced (1.0f);
         const bool on = getToggleState();
-        g.setColour (on ? accent : juce::Colours::white.withAlpha (over ? 0.14f : 0.08f));
-        if (down) g.setColour (on ? accent.darker (0.2f) : juce::Colours::white.withAlpha (0.2f));
-        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
-        if (outline && ! on) { g.setColour (accent.withAlpha (0.6f)); g.drawRoundedRectangle (r.reduced (0.75f), r.getHeight() * 0.5f, 1.5f); }
-        g.setColour (on ? juce::Colour (0xff14081f) : juce::Colour (0xfff4ecff).withAlpha (isEnabled() ? 1.0f : 0.4f));
+        juce::Path p;
+        if (shape == hex) p = shapes::hexPath (r);
+        else if (shape == pebble) p = shapes::blobPath (r, (int) getButtonText().hashCode(), 0.06f, 8);
+        else if (shape == moon) p.addEllipse (r.withSizeKeepingCentre (juce::jmin (r.getWidth(), r.getHeight()), juce::jmin (r.getWidth(), r.getHeight())));
+        else p.addRoundedRectangle (r, r.getHeight() * 0.5f);
+        const auto ink = juce::Colour (0xff14081f);
+        if (shape == moon)
+        {
+            const auto b = p.getBounds();
+            g.setColour (juce::Colour (0xff1c1236)); g.fillPath (p);
+            // lit part of the moon
+            g.saveState(); g.reduceClipRegion (p);
+            g.setColour (on ? accent : accent.withAlpha (over ? 0.75f : 0.55f));
+            if (on || moonPhase == 0) g.fillPath (p);
+            else
+            {
+                const float k = std::abs ((float) moonPhase) / 3.0f;   // 1/3 or 2/3 lit
+                if (moonPhase < 0) g.fillRect (b.withWidth (b.getWidth() * k));
+                else g.fillRect (b.withTrimmedLeft (b.getWidth() * (1.0f - k)));
+            }
+            g.restoreState();
+            g.setColour (accent.withAlpha (on ? 0.9f : 0.5f)); g.strokePath (p, juce::PathStrokeType (on ? 2.0f : 1.2f));
+            if (on) { g.setColour (accent.withAlpha (0.25f)); g.strokePath (p, juce::PathStrokeType (6.0f)); }
+            g.setColour (on || moonPhase == 0 ? ink : juce::Colour (0xfff4ecff));
+        }
+        else
+        {
+            if (on)
+            {
+                if (shape == hex)
+                {
+                    g.setColour (accent.withAlpha (0.3f)); g.strokePath (p, juce::PathStrokeType (6.0f));
+                    g.setGradientFill (juce::ColourGradient (accent.brighter (0.45f), r.getX(), r.getY(), accent.darker (0.25f), r.getX(), r.getBottom(), false));
+                }
+                else g.setColour (accent);
+                if (down) g.setColour (accent.darker (0.2f));
+                g.fillPath (p);
+                if (shape == hex) { g.setColour (juce::Colours::white.withAlpha (0.35f)); g.fillRect (r.withHeight (r.getHeight() * 0.42f).reduced (r.getHeight() * 0.42f, 0).translated (0, 1)); }
+            }
+            else
+            {
+                if (onLight) g.setColour (ink.withAlpha (over ? 0.14f : 0.08f));
+                else if (shape == hex || shape == pebble) g.setColour (juce::Colour (0xff241040).withAlpha (over ? 1.0f : 0.92f));
+                else g.setColour (juce::Colours::white.withAlpha (over ? 0.14f : 0.08f));
+                if (down) g.setColour (juce::Colours::white.withAlpha (0.2f));
+                g.fillPath (p);
+                if (outline || shape == hex || shape == pebble) { g.setColour (accent.withAlpha (shape == pill ? 0.6f : 0.42f)); g.strokePath (p, juce::PathStrokeType (shape == pill ? 1.5f : 1.2f)); }
+            }
+            g.setColour (on ? ink : (onLight ? ink : juce::Colour (0xfff4ecff)).withAlpha (isEnabled() ? 1.0f : 0.4f));
+        }
         g.setFont (TchiskibidiLookAndFeel::font (fontSize));
-        g.drawFittedText (getButtonText(), getLocalBounds().reduced (6, 0), juce::Justification::centred, 1, 0.8f);
+        g.drawFittedText (getButtonText(), getLocalBounds().reduced (shape == hex ? 10 : 6, 0), juce::Justification::centred, 1, 0.8f);
     }
     bool outline = false;
 };
@@ -47,21 +97,52 @@ public:
         const auto c = getLocalBounds().toFloat().getCentre();
         const float R = juce::jmin (getWidth(), getHeight()) * 0.5f - 4.0f, ri = R * 0.42f;
         const int n = items.size();
-        g.setColour (juce::Colours::black.withAlpha (0.35f)); g.fillEllipse (c.x - R - 4, c.y - R - 4, (R + 4) * 2, (R + 4) * 2);
+        if (faceted)
+        {
+            g.setColour (glow.withAlpha (0.12f)); g.fillEllipse (c.x - R - 10, c.y - R - 10, (R + 10) * 2, (R + 10) * 2);
+            g.setColour (glow.withAlpha (0.55f)); g.drawEllipse (c.x - R - 6, c.y - R - 6, (R + 6) * 2, (R + 6) * 2, 1.4f);
+        }
+        else { g.setColour (juce::Colours::black.withAlpha (0.35f)); g.fillEllipse (c.x - R - 4, c.y - R - 4, (R + 4) * 2, (R + 4) * 2); }
         for (int i = 0; i < n; ++i)
         {
             const float a0 = juce::MathConstants<float>::twoPi * ((float) i - 0.5f) / (float) n + 0.012f;
             const float a1 = juce::MathConstants<float>::twoPi * ((float) i + 0.5f) / (float) n - 0.012f;
-            juce::Path seg; seg.addPieSegment (c.x - R, c.y - R, R * 2, R * 2, a0, a1, ri / R);
-            g.setColour (i == selected ? accent : (i == hover ? juce::Colour (0xff2c1c48) : juce::Colour (0xff1c1428)));
-            g.fillPath (seg);
+            juce::Path seg;
+            if (faceted)
+            {
+                // straight cuts: the wheel looks like a cut gem
+                auto P = [&] (float rr, float a) { return c.getPointOnCircumference (rr, a); };
+                seg.startNewSubPath (P (ri, a0)); seg.lineTo (P (R, a0)); seg.lineTo (P (R * 1.02f, (a0 + a1) * 0.5f)); seg.lineTo (P (R, a1)); seg.lineTo (P (ri, a1)); seg.closeSubPath();
+                if (i == selected) g.setGradientFill (juce::ColourGradient (accent.brighter (0.5f), P (R, a0).x, P (R, a0).y, accent.darker (0.3f), P (ri, a1).x, P (ri, a1).y, false));
+                else g.setColour (i == hover ? juce::Colour (0xff3a2470) : ((i % 2) ? juce::Colour (0xff2a1858) : juce::Colour (0xff23134a)));
+                g.fillPath (seg);
+                g.setColour (glow.withAlpha (i == selected ? 0.0f : 0.35f)); g.strokePath (seg, juce::PathStrokeType (0.8f));
+            }
+            else
+            {
+                seg.addPieSegment (c.x - R, c.y - R, R * 2, R * 2, a0, a1, ri / R);
+                g.setColour (i == selected ? accent : (i == hover ? juce::Colour (0xff2c1c48) : juce::Colour (0xff1c1428)));
+                g.fillPath (seg);
+            }
             const auto p = c.getPointOnCircumference ((R + ri) * 0.5f, (a0 + a1) * 0.5f);
             g.setColour (i == selected ? juce::Colour (0xff14081f) : juce::Colour (0xfff4ecff));
             g.setFont (TchiskibidiLookAndFeel::font (n > 10 ? 11.0f : 12.5f));
             g.drawText (items[i].toUpperCase(), juce::Rectangle<float> (70, 18).withCentre (p), juce::Justification::centred);
         }
-        g.setColour (juce::Colour (0xff0a0612)); g.fillEllipse (c.x - ri + 2, c.y - ri + 2, (ri - 2) * 2, (ri - 2) * 2);
-        g.setColour (accent.withAlpha (0.6f)); g.drawEllipse (c.x - ri + 2, c.y - ri + 2, (ri - 2) * 2, (ri - 2) * 2, 1.5f);
+        if (faceted)
+        {
+            // centre: a 12-sided gem
+            juce::Path gem;
+            for (int i = 0; i < 12; ++i) { const auto q = c.getPointOnCircumference (ri - 3, juce::MathConstants<float>::twoPi * (float) i / 12.0f); if (i == 0) gem.startNewSubPath (q); else gem.lineTo (q); }
+            gem.closeSubPath();
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff4a2c8a), c.x, c.y - ri, juce::Colour (0xff160a30), c.x, c.y + ri, false)); g.fillPath (gem);
+            g.setColour (glow.withAlpha (0.8f)); g.strokePath (gem, juce::PathStrokeType (1.5f));
+        }
+        else
+        {
+            g.setColour (juce::Colour (0xff0a0612)); g.fillEllipse (c.x - ri + 2, c.y - ri + 2, (ri - 2) * 2, (ri - 2) * 2);
+            g.setColour (accent.withAlpha (0.6f)); g.drawEllipse (c.x - ri + 2, c.y - ri + 2, (ri - 2) * 2, (ri - 2) * 2, 1.5f);
+        }
         g.setColour (accent); g.setFont (TchiskibidiLookAndFeel::font (16.0f));
         g.drawText (centreText.isNotEmpty() ? centreText : items[selected].toUpperCase(), juce::Rectangle<float> (ri * 2, 24).withCentre (c), juce::Justification::centred);
     }
@@ -77,6 +158,8 @@ public:
     void mouseExit (const juce::MouseEvent&) override { hover = -1; repaint(); }
     void mouseDown (const juce::MouseEvent& e) override { const int h = hitIndex (e.position); if (h >= 0) { setSelected (h); if (onPick) onPick (h); } }
     juce::String centreText;
+    bool faceted = false;                       // Supernova: cut-gem wheel
+    juce::Colour glow { 0xff5aa8ff };
 private:
     juce::StringArray items;
     juce::Colour accent;
@@ -98,6 +181,7 @@ public:
     std::function<std::vector<std::tuple<int, int, juce::String>>()> getLabels; // start, length, text
     std::function<double()> getPlayStep;
     std::function<void()> onUndo, onRedo;     // Cmd+Z / Cmd+Shift+Z while the grid has the keyboard
+    std::function<juce::Path (juce::Rectangle<float>)> shapeFn;   // outline of the grid (default: rounded rectangle)
     int scaleRoot = -1, scaleIdx = 0;         // notes of this key are lit (root brighter); -1 = none
 
     PianoRoll() { setWantsKeyboardFocus (true); getProperties().set ("keepFocus", true); }
@@ -129,9 +213,11 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat();
-        g.setColour (juce::Colours::black.withAlpha (0.42f)); g.fillRoundedRectangle (r, 16.0f);
-        g.setColour (accent.withAlpha (0.35f)); g.drawRoundedRectangle (r.reduced (0.75f), 16.0f, 1.5f);
-        g.saveState(); g.reduceClipRegion (getLocalBounds().reduced (2));
+        juce::Path outline;
+        if (shapeFn) outline = shapeFn (r.reduced (1.0f)); else outline.addRoundedRectangle (r.reduced (0.75f), 16.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.48f)); g.fillPath (outline);
+        g.setColour (accent.withAlpha (0.45f)); g.strokePath (outline, juce::PathStrokeType (1.5f));
+        g.saveState(); g.reduceClipRegion (outline);
         const float rh = rowH(), sw = stepW();
         for (int p = lo; p <= hi; ++p)
         {
@@ -433,10 +519,13 @@ public:
         auto r = getLocalBounds().toFloat().reduced (1.0f);
         juce::Path p; p.addRoundedRectangle (r, r.getHeight() * 0.5f);
         float dashes[] = { 5.0f, 4.0f }; juce::Path d; juce::PathStrokeType (1.5f).createDashedStroke (d, p, dashes, 2);
-        g.setColour (juce::Colours::white.withAlpha (isMouseOver() ? 0.8f : 0.45f)); g.fillPath (d);
-        g.setColour (LNF::text); g.setFont (LNF::font (13.0f));
+        const auto ink = onLight ? juce::Colour (0xff2a1450) : juce::Colours::white;
+        if (onLight) { g.setColour (ink.withAlpha (isMouseOver() ? 0.16f : 0.07f)); g.fillPath (p); }
+        g.setColour (ink.withAlpha (isMouseOver() ? 0.8f : 0.5f)); g.fillPath (d);
+        g.setColour (onLight ? ink : LNF::text); g.setFont (LNF::font (13.0f));
         g.drawText (juce::String (juce::CharPointer_UTF8 ("\xe2\xa0\xbf ")) + text, getLocalBounds(), juce::Justification::centred);
     }
+    bool onLight = false;
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }
     void mouseExit (const juce::MouseEvent&) override { repaint(); }
     void mouseDrag (const juce::MouseEvent& e) override
@@ -461,14 +550,15 @@ class TransportBadge : public juce::Component
 {
 public:
     std::function<bool()> isPlaying;
+    bool onLight = false;
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.35f)); g.fillRoundedRectangle (r, 12.0f);
+        g.setColour (onLight ? juce::Colour (0xff2a1450).withAlpha (0.10f) : juce::Colours::black.withAlpha (0.35f)); g.fillRoundedRectangle (r, 12.0f);
         const bool on = isPlaying && isPlaying();
         const auto dot = juce::Rectangle<float> (10, 10).withCentre ({ r.getX() + 16, r.getCentreY() });
-        g.setColour (on ? juce::Colour (0xff5dff8a) : juce::Colours::white.withAlpha (0.3f)); g.fillEllipse (dot);
-        g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
+        g.setColour (on ? juce::Colour (0xff22c35a) : (onLight ? juce::Colour (0xff2a1450).withAlpha (0.3f) : juce::Colours::white.withAlpha (0.3f))); g.fillEllipse (dot);
+        g.setColour (onLight ? juce::Colour (0xff3a2a5e) : LNF::textDim); g.setFont (LNF::font (10.5f));
         g.drawFittedText (on ? TK_FR ("JOUE AVEC ABLETON") : TK_FR ("LANCE ABLETON (ESPACE)\nPOUR ENTENDRE"), r.withTrimmedLeft (28).toNearestInt(), juce::Justification::centredLeft, 2);
     }
 };
@@ -479,6 +569,7 @@ class Star3D : public juce::Component
 {
 public:
     juce::Colour accent { 0xffffd34d };
+    bool supernova = false;   // golden orbit rings, metal shading, no rays
     std::function<void()> onClick;
     void pop() { popT = nowSec(); }
     void paint (juce::Graphics& g) override
@@ -489,15 +580,34 @@ public:
         const float popK = (float) juce::jmax (0.0, 1.0 - (t - popT) / 0.45);
         const float scale = 1.0f + 0.12f * popK * std::sin ((float) (t - popT) * 18.0f);
         const float R = size * 0.40f * scale, r = size * 0.19f * scale, H = size * 0.16f * scale;
+        if (supernova)
+        {
+            // glow + two golden orbits around the star
+            g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.55f), c.x, c.y, accent.withAlpha (0.0f), c.x + size * 0.55f, c.y, true));
+            g.fillEllipse (juce::Rectangle<float> (size * 1.1f, size * 1.1f).withCentre (c));
+            for (int k = 0; k < 2; ++k)
+            {
+                juce::Path orbit; orbit.addEllipse (juce::Rectangle<float> (size * (0.98f - 0.12f * (float) k), size * (0.30f + 0.06f * (float) k)).withCentre (c));
+                orbit.applyTransform (juce::AffineTransform::rotation (-0.32f + 0.62f * (float) k + 0.05f * (float) std::sin (t * 0.4 + k), c.x, c.y));
+                g.setColour (accent.withAlpha (0.55f)); g.strokePath (orbit, juce::PathStrokeType (1.3f));
+                const float u = (float) std::fmod (t * (0.25 + 0.1 * k) + k * 0.5, 1.0);
+                const auto pt = orbit.getPointAlongPath (orbit.getLength() * u);
+                g.setColour (juce::Colour (0xfffff6d0)); g.fillEllipse (juce::Rectangle<float> (5, 5).withCentre (pt));
+            }
+        }
         // rays + glow
+        if (! supernova)
         for (int i = 0; i < 12; ++i)
         {
             const float a = (float) i * juce::MathConstants<float>::pi / 6.0f + (float) t * 0.12f;
             juce::Path ray; ray.addTriangle (c, c.getPointOnCircumference (size * 0.62f, a - 0.05f), c.getPointOnCircumference (size * 0.62f, a + 0.05f));
             g.setColour (accent.withAlpha (0.08f)); g.fillPath (ray);
         }
-        g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.45f), c.x, c.y, accent.withAlpha (0.0f), c.x + size * 0.5f, c.y, true));
-        g.fillEllipse (juce::Rectangle<float> (size, size).withCentre (c));
+        if (! supernova)
+        {
+            g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.45f), c.x, c.y, accent.withAlpha (0.0f), c.x + size * 0.5f, c.y, true));
+            g.fillEllipse (juce::Rectangle<float> (size, size).withCentre (c));
+        }
         // rotate the star around its vertical axis, tilted a little
         const float yaw = (float) std::sin (t * 0.7) * 0.55f + popK * 6.28f, pitchA = -0.25f;
         struct P3 { float x, y, z; };
@@ -527,9 +637,23 @@ public:
         std::sort (faces.begin(), faces.end(), [] (const Face& x, const Face& y) { return x.z > y.z; });
         for (auto& f : faces)
         {
-            g.setColour (accent.interpolatedWith (juce::Colour (0xff8a5a00), 1.0f - f.shade).brighter (f.shade * 0.35f));
-            g.fillPath (f.p);
-            g.setColour (juce::Colour (0xfffff3c4).withAlpha (0.25f)); g.strokePath (f.p, juce::PathStrokeType (0.6f));
+            if (supernova)
+            {
+                // polished gold: dark amber in the shadow, almost white where the light hits
+                const float L = f.shade;
+                auto col = L > 0.7f ? juce::Colour (0xffffe9a0).interpolatedWith (juce::Colour (0xfffffbe8), (L - 0.7f) * 3.0f)
+                                    : juce::Colour (0xff7a4a06).interpolatedWith (juce::Colour (0xffffc83d), L / 0.7f);
+                const auto b = f.p.getBounds();
+                g.setGradientFill (juce::ColourGradient (col.brighter (0.15f), b.getX(), b.getY(), col.darker (0.25f), b.getRight(), b.getBottom(), false));
+                g.fillPath (f.p);
+                g.setColour (juce::Colour (0xfffff6d8).withAlpha (0.55f)); g.strokePath (f.p, juce::PathStrokeType (0.9f));
+            }
+            else
+            {
+                g.setColour (accent.interpolatedWith (juce::Colour (0xff8a5a00), 1.0f - f.shade).brighter (f.shade * 0.35f));
+                g.fillPath (f.p);
+                g.setColour (juce::Colour (0xfffff3c4).withAlpha (0.25f)); g.strokePath (f.p, juce::PathStrokeType (0.6f));
+            }
         }
         // sparkles
         for (int i = 0; i < 6; ++i)
@@ -546,6 +670,85 @@ public:
     void mouseDown (const juce::MouseEvent&) override { pop(); if (onClick) onClick(); }
 private:
     double popT = -10.0;
+};
+
+//==============================================================================
+// FUSION: the lava lamp. Click = new bass line: the lava boils and rises faster for a moment.
+class LavaLamp : public juce::Component
+{
+public:
+    juce::Colour accent { 0xffff4d7d };
+    std::function<void()> onClick;
+    void pulse (float k = 1.0f) { pulseT = nowSec(); pulseK = k; }
+    void wake() { wakeT = nowSec(); }
+    void paint (juce::Graphics& g) override
+    {
+        const double t = nowSec();
+        const float W = (float) getWidth(), H = (float) getHeight(), cx = W * 0.5f;
+        const float wk = (float) juce::jmax (0.0, 1.0 - (t - wakeT) / 1.4);
+        const float pk = (float) juce::jmax (0.0, 1.0 - (t - pulseT) / 0.25) * pulseK;
+        // boiling: the lava clock runs faster after a click
+        lavaClock += (t - lastT > 0 && t - lastT < 0.2 ? (t - lastT) : 0.0) * (1.0 + 5.0 * wk);
+        lastT = t;
+        const double lt = lavaClock;
+        // the glass
+        const float gt = H * 0.17f, gb = H * 0.83f;
+        juce::Path glass;
+        glass.startNewSubPath (cx - W * 0.17f, gt);
+        glass.lineTo (cx + W * 0.17f, gt);
+        glass.cubicTo (cx + W * 0.26f, H * 0.38f, cx + W * 0.36f, H * 0.62f, cx + W * 0.24f, gb);
+        glass.lineTo (cx - W * 0.24f, gb);
+        glass.cubicTo (cx - W * 0.36f, H * 0.62f, cx - W * 0.26f, H * 0.38f, cx - W * 0.17f, gt);
+        glass.closeSubPath();
+        // glow behind
+        g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.35f + 0.25f * pk + 0.2f * wk), cx, H * 0.6f, accent.withAlpha (0.0f), cx + W * 0.62f, H * 0.6f, true));
+        g.fillEllipse (cx - W * 0.6f, H * 0.12f, W * 1.2f, H * 0.95f);
+        juce::ColourGradient liquid (juce::Colour (0xff3a0a3a), cx, gt, juce::Colour (0xffb0204a), cx, gb, false);
+        liquid.addColour (0.7, juce::Colour (0xff6a1240));
+        g.setGradientFill (liquid); g.fillPath (glass);
+        // the lava blobs (drawn as one shape, so the ones that touch melt together)
+        g.saveState(); g.reduceClipRegion (glass);
+        juce::Path lava;
+        lava.addEllipse (cx - W * 0.3f, gb - H * 0.07f, W * 0.6f, H * 0.16f);   // the pool at the bottom
+        for (int i = 0; i < 6; ++i)
+        {
+            const double sp = 0.05 + 0.025 * (double) (i % 3);
+            const float u = (float) std::fmod (lt * sp + (double) i * 0.173, 1.0);
+            const float e = 0.5f - 0.5f * std::cos (u * juce::MathConstants<float>::twoPi);    // up, then down
+            const float y = gb - (gb - gt) * (0.08f + 0.86f * e);
+            const float x = cx + std::sin ((float) lt * 0.4f + (float) i * 1.9f) * W * 0.1f;
+            const float rr = W * (0.065f + 0.022f * (float) ((i * 7) % 4));
+            const float stretch = 1.0f + 0.35f * std::abs (std::sin (u * juce::MathConstants<float>::twoPi));
+            lava.addEllipse (x - rr, y - rr * stretch, rr * 2, rr * 2 * stretch);
+        }
+        juce::ColourGradient magma (juce::Colour (0xffffe08a), cx, gb, juce::Colour (0xffff4d7d), cx, gt, false);
+        magma.addColour (0.35, juce::Colour (0xffff8a3d));
+        g.setGradientFill (magma); g.fillPath (lava);
+        g.setColour (juce::Colour (0xffffe9b0).withAlpha (0.35f)); g.strokePath (lava, juce::PathStrokeType (1.2f));
+        g.restoreState();
+        // reflections on the glass
+        g.setColour (juce::Colours::white.withAlpha (0.16f));
+        juce::Path shine; shine.startNewSubPath (cx - W * 0.14f, gt + H * 0.05f); shine.cubicTo (cx - W * 0.2f, H * 0.4f, cx - W * 0.27f, H * 0.6f, cx - W * 0.2f, gb - H * 0.06f);
+        g.strokePath (shine, juce::PathStrokeType (W * 0.035f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (accent.withAlpha (0.7f)); g.strokePath (glass, juce::PathStrokeType (1.5f));
+        // metal cap and base
+        auto metal = [&] (float y0, float y1, float w0, float w1)
+        {
+            juce::Path p; p.startNewSubPath (cx - w0, y0); p.lineTo (cx + w0, y0); p.lineTo (cx + w1, y1); p.lineTo (cx - w1, y1); p.closeSubPath();
+            juce::ColourGradient mg (juce::Colour (0xff5a3a78), cx - w1, y0, juce::Colour (0xff1e1030), cx + w1, y0, false);
+            mg.addColour (0.3, juce::Colour (0xffd9c8f0)); mg.addColour (0.45, juce::Colour (0xff8a6aa8));
+            g.setGradientFill (mg); g.fillPath (p);
+            g.setColour (juce::Colours::white.withAlpha (0.25f)); g.strokePath (p, juce::PathStrokeType (1.0f));
+        };
+        metal (H * 0.04f, gt, W * 0.1f, W * 0.18f);
+        metal (gb, H * 0.99f, W * 0.24f, W * 0.34f);
+        g.setColour (juce::Colour (0xffffd0de)); g.setFont (LNF::font (9.5f));
+        g.drawText ("FUSION", juce::Rectangle<float> (cx - W * 0.3f, H * 0.89f, W * 0.6f, H * 0.08f), juce::Justification::centred);
+    }
+    void mouseDown (const juce::MouseEvent&) override { wake(); if (onClick) onClick(); }
+private:
+    double pulseT = -10, wakeT = -10, lastT = 0, lavaClock = 0;
+    float pulseK = 1.0f;
 };
 
 //==============================================================================

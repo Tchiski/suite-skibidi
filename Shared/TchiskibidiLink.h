@@ -1,6 +1,6 @@
 #pragma once
 
-// "Lien": Tchiskibidi Accords shares its progression with the other Tchiskibidi instruments
+// "Lien": Tchiskibidi Supernova shares its progression with the other Tchiskibidi instruments
 // (Synthé, Basse) without any routing in the DAW. Accords writes a small text file each time
 // its chords change; the others read it and play / follow the same chords with the transport.
 // Everything happens on the message thread (never on the audio thread).

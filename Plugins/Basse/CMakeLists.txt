@@ -1,6 +1,6 @@
 juce_add_plugin(TchiskibidiBasse
     COMPANY_NAME "Tchiskibidi"
-    PRODUCT_NAME "Tchiskibidi Basse"
+    PRODUCT_NAME "Tchiskibidi Fusion"
     BUNDLE_ID com.tchiskibidi.basse
     PLUGIN_MANUFACTURER_CODE Tchk
     PLUGIN_CODE Tbas

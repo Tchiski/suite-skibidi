@@ -4,17 +4,17 @@
 #include "TchiskibidiSounds.h"
 #include "TchiskibidiLink.h"
 
-// Tchiskibidi Synthé: 152 presets in 8 families, 4 big macros and 8 fine settings.
+// Tchiskibidi Milky Way: 152 presets in 8 families, 4 big macros and 8 fine settings.
 class SynthProcessor : public tchk::InstrumentProcessor, private juce::Timer
 {
 public:
     SynthProcessor();
     ~SynthProcessor() override { stopTimer(); }
-    // Lien: plays the chords of Tchiskibidi Accords with the transport (nothing to route in the DAW)
+    // Lien: plays the chords of Tchiskibidi Supernova with the transport (nothing to route in the DAW)
     bool linkOn() const { return (int) apvts.state.getProperty ("link", 0) != 0; }
     void setLink (bool on);
     juce::String linkText;   // "Lam - Fa - Do - Sol" while following
-    const juce::String getName() const override { return "Tchiskibidi Synthe"; }
+    const juce::String getName() const override { return "Tchiskibidi Milky Way"; }
     juce::AudioProcessorEditor* createEditor() override;
 
     juce::AudioProcessorValueTreeState apvts;

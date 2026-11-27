@@ -27,7 +27,7 @@ private:
     juce::OwnedArray<tchk::Chip> scaleChips, styleChips, barChips;
     tchk::Chip follow { TK_FR ("◎ Suivre mes accords"), pink };
     tchk::Chip prevB { juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x80")), pink }, nextB { juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6")), pink };
-    tchk::BlackHole hole;
+    tchk::LavaLamp hole;
     tchk::Choice soundBox;
     tchk::Knob lengthK, glideK, subK, distK, slidesK;
     tchk::Chip undoB { TK_FR ("↶ Revenir"), pink };

@@ -57,6 +57,16 @@ public:
         const auto angle = startAngle + sliderPos * (endAngle - startAngle);
         const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
         const bool enabled = slider.isEnabled();
+        if (slider.getProperties()["tk"].toString() == "porthole")
+        {
+            drawPortholeKnob (g, bounds, sliderPos, startAngle, endAngle, accent, enabled);
+            return;
+        }
+        if (slider.getProperties()["tk"].toString() == "lava")
+        {
+            drawLavaKnob (g, bounds, sliderPos, startAngle, endAngle, accent, enabled);
+            return;
+        }
         if (slider.getProperties()["tk"].toString() == "orbit")
         {
             drawOrbit (g, bounds, sliderPos, startAngle, endAngle, accent, enabled);
@@ -103,6 +113,80 @@ public:
     }
 
     // planet + sun: the sun travels on the dashed orbit, the arc behind it shows the value
+    // SPACE: a rocket porthole (riveted metal ring, glass, glowing needle)
+    static void drawPortholeKnob (juce::Graphics& g, juce::Rectangle<float> bounds, float pos, float a0, float a1, juce::Colour accent, bool enabled)
+    {
+        const auto c = bounds.getCentre();
+        const float R = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 1.0f;
+        const float ang = a0 + pos * (a1 - a0);
+        // metal ring
+        juce::ColourGradient metal (juce::Colour (0xffb8d8f0), c.x - R, c.y - R, juce::Colour (0xff1d3550), c.x + R, c.y + R, false);
+        metal.addColour (0.5, juce::Colour (0xff4d7fa6));
+        g.setGradientFill (metal); g.fillEllipse (c.x - R, c.y - R, R * 2, R * 2);
+        const float ri = R * 0.78f;
+        // rivets
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto p = c.getPointOnCircumference (R * 0.89f, juce::MathConstants<float>::twoPi * (float) i / 8.0f + 0.39f);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffeaf6ff), p.x - 1.5f, p.y - 1.5f, juce::Colour (0xff3a5a78), p.x + 2, p.y + 2, false));
+            g.fillEllipse (p.x - R * 0.06f, p.y - R * 0.06f, R * 0.12f, R * 0.12f);
+        }
+        // glass
+        juce::ColourGradient glass (juce::Colour (0xff1c3a5e), c.x - ri * 0.3f, c.y - ri * 0.4f, juce::Colour (0xff040a16), c.x + ri, c.y + ri, true);
+        g.setGradientFill (glass); g.fillEllipse (c.x - ri, c.y - ri, ri * 2, ri * 2);
+        g.setColour (juce::Colours::black.withAlpha (0.6f)); g.drawEllipse (c.x - ri, c.y - ri, ri * 2, ri * 2, 1.5f);
+        // value arc on the inner edge
+        juce::Path track; track.addCentredArc (c.x, c.y, ri * 0.84f, ri * 0.84f, 0.0f, a0, a1, true);
+        g.setColour (accent.withAlpha (0.15f)); g.strokePath (track, juce::PathStrokeType (ri * 0.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        if (enabled)
+        {
+            juce::Path v; v.addCentredArc (c.x, c.y, ri * 0.84f, ri * 0.84f, 0.0f, a0, ang, true);
+            g.setColour (accent.withAlpha (0.3f)); g.strokePath (v, juce::PathStrokeType (ri * 0.26f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour (accent); g.strokePath (v, juce::PathStrokeType (ri * 0.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        // needle
+        const auto tip = c.getPointOnCircumference (ri * 0.66f, ang);
+        g.setColour (accent.withAlpha (enabled ? 0.35f : 0.1f)); g.drawLine (c.x, c.y, tip.x, tip.y, ri * 0.16f);
+        g.setColour (enabled ? accent.brighter (0.4f) : juce::Colours::grey); g.drawLine (c.x, c.y, tip.x, tip.y, ri * 0.06f);
+        g.setColour (juce::Colour (0xff9fc8e6)); g.fillEllipse (c.x - ri * 0.1f, c.y - ri * 0.1f, ri * 0.2f, ri * 0.2f);
+        // reflection on the glass
+        g.setColour (juce::Colours::white.withAlpha (0.12f));
+        juce::Path refl; refl.addCentredArc (c.x, c.y, ri * 0.7f, ri * 0.7f, 0.0f, -2.2f, -0.9f, true);
+        g.strokePath (refl, juce::PathStrokeType (ri * 0.12f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    // FUSION: a drop of magma; the value is a glowing ring of lava
+    static void drawLavaKnob (juce::Graphics& g, juce::Rectangle<float> bounds, float pos, float a0, float a1, juce::Colour accent, bool enabled)
+    {
+        const auto c = bounds.getCentre();
+        const float R = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
+        const float ang = a0 + pos * (a1 - a0);
+        juce::Path track; track.addCentredArc (c.x, c.y, R * 0.86f, R * 0.86f, 0.0f, a0, a1, true);
+        g.setColour (juce::Colour (0xff2a0a24)); g.strokePath (track, juce::PathStrokeType (R * 0.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        if (enabled && pos > 0.001f)
+        {
+            juce::Path v; v.addCentredArc (c.x, c.y, R * 0.86f, R * 0.86f, 0.0f, a0, ang, true);
+            g.setColour (accent.withAlpha (0.3f)); g.strokePath (v, juce::PathStrokeType (R * 0.38f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            juce::ColourGradient lg (juce::Colour (0xffffd27a), c.x, c.y + R, accent, c.x, c.y - R, false);
+            g.setGradientFill (lg); g.strokePath (v, juce::PathStrokeType (R * 0.17f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        // the drop (a soft blob, a bit heavier at the bottom)
+        const float r = R * 0.58f;
+        juce::Path drop;
+        drop.startNewSubPath (c.x, c.y - r * 1.05f);
+        drop.cubicTo (c.x + r * 0.7f, c.y - r * 0.8f, c.x + r * 1.05f, c.y + r * 0.2f, c.x + r * 0.75f, c.y + r * 0.72f);
+        drop.cubicTo (c.x + r * 0.45f, c.y + r * 1.08f, c.x - r * 0.45f, c.y + r * 1.08f, c.x - r * 0.75f, c.y + r * 0.72f);
+        drop.cubicTo (c.x - r * 1.05f, c.y + r * 0.2f, c.x - r * 0.7f, c.y - r * 0.8f, c.x, c.y - r * 1.05f);
+        drop.closeSubPath();
+        juce::ColourGradient body (juce::Colour (0xffffc8d8), c.x - r * 0.4f, c.y - r * 0.5f, juce::Colour (0xff6a0a2a), c.x + r * 0.6f, c.y + r, true);
+        body.addColour (0.45, accent);
+        g.setGradientFill (body); g.fillPath (drop);
+        g.setColour (juce::Colours::white.withAlpha (0.55f)); g.fillEllipse (c.x - r * 0.45f, c.y - r * 0.55f, r * 0.32f, r * 0.22f);
+        // pointer: a bright bubble on the ring
+        const auto p = c.getPointOnCircumference (R * 0.86f, ang);
+        g.setColour (juce::Colour (0xfffff0c0)); g.fillEllipse (p.x - R * 0.12f, p.y - R * 0.12f, R * 0.24f, R * 0.24f);
+    }
+
     static void drawOrbit (juce::Graphics& g, juce::Rectangle<float> bounds, float pos, float a0, float a1, juce::Colour accent, bool enabled)
     {
         const float R = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 5.0f;

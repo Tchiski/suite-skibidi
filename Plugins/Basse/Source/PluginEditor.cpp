@@ -16,8 +16,8 @@ BasseEditor::BasseEditor (BasseProcessor& p)
       soundBox (p.apvts, "sound"),
       lengthK (p.apvts, "length", "Longueur", pink, true), glideK (p.apvts, "glide", "Glide", pink, true), subK (p.apvts, "sub", "Sub", pink, true),
       distK (p.apvts, "dist", "Grain", pink, true), slidesK (p.apvts, "slides", "Glissandos", pink, true),
-      dragMidi ("Glisser le MIDI", [this] { return tchk::exportfiles::writeMidi (audioProcessor.getNotes(), audioProcessor.player.bpm, "Tchiskibidi Basse"); }),
-      dragAudio (TK_FR ("Glisser l'audio"), [this] { return tchk::exportfiles::writeWav (audioProcessor.getNotes(), audioProcessor.totalSteps(), audioProcessor.player.bpm, audioProcessor.exportPatch(), "Tchiskibidi Basse"); })
+      dragMidi ("Glisser le MIDI", [this] { return tchk::exportfiles::writeMidi (audioProcessor.getNotes(), audioProcessor.player.bpm, "Tchiskibidi Fusion"); }),
+      dragAudio (TK_FR ("Glisser l'audio"), [this] { return tchk::exportfiles::writeWav (audioProcessor.getNotes(), audioProcessor.totalSteps(), audioProcessor.player.bpm, audioProcessor.exportPatch(), "Tchiskibidi Fusion"); })
 {
     content.paintFn = [this] (juce::Graphics& g) { paintContent (g); };
     content.overFn = [this] (juce::Graphics& g) { overContent (g); };
@@ -53,7 +53,10 @@ BasseEditor::BasseEditor (BasseProcessor& p)
     nextB.onClick = [this] { stepSound (1); };
     hole.accent = pink;
     hole.onClick = [this] { regenerate(); };
-    for (auto* k : { &lengthK, &glideK, &subK, &distK, &slidesK }) k->asOrbit();
+    for (auto* k : { &lengthK, &glideK, &subK, &distK, &slidesK }) k->asLava();
+    for (auto* arr : { &scaleChips, &styleChips, &barChips }) for (auto* c : *arr) c->shape = tchk::Chip::pebble;
+    follow.shape = tchk::Chip::pebble;
+    roll.shapeFn = [] (juce::Rectangle<float> r) { return tchk::shapes::lavaPoolPath (r, 9.0f, 4); };
     undoB.fontSize = 10.5f; undoB.setEnabled (false);
     undoB.onClick = [this] { doUndo(); };
     octDown.onClick = [this] { shiftOctave (-1); };
@@ -82,14 +85,14 @@ BasseEditor::BasseEditor (BasseProcessor& p)
     for (auto* arr : { &scaleChips, &styleChips, &barChips }) for (auto* c : *arr) content.addAndMakeVisible (c);
 
     layout();
-    addInfo (112, 64, TK_FR ("Clique la note de ton morceau.||NOTES : Do = C, Do# = C#, Ré = D, Ré# = D#, Mi = E, Fa = F, Fa# = F#, Sol = G, Sol# = G#, La = A, La# = A#, Si = B.|La basse est construite sur cette note et cette gamme. Avec « Suivre mes accords », elles se règlent toutes seules."), TK_FR ("Tonalité"));
-    addInfo (86, 345, TK_FR ("La couleur de la basse.||Majeur = lumineux, Mineur = triste ou sombre, Dorien = mélancolique groovy, Phrygien = oriental, Mixolydien = funky."), "Gamme");
-    addInfo (708, 64, TK_FR ("Le rythme de la basse.||TRAP : longues 808 avec sauts d'octave.|DRILL : 808 qui glissent d'une note à l'autre.|R&B : basse souple qui suit les accords.|AFRO / REGGAETON : rythmes qui dansent.|BOOM BAP : lourd et posé.|HOUSE : notes entre les kicks.|FUNK : notes courtes, octaves qui sautent.|Changer de style choisit aussi un son qui va bien avec."), "Style");
-    addInfo (726, 196, TK_FR ("4 ou 8 mesures.||Longueur de la ligne de basse. Avec « Suivre mes accords », elle prend la longueur que tu choisis ici."), "Mesures");
-    addInfo (844, 290, TK_FR ("La basse se cale sur tes accords, rien à brancher.||AVEC TCHISKIBIDI ACCORDS : active ce bouton, c'est tout. La basse prend tout de suite la tonalité et les accords de la grille d'Accords, et se refait à chaque fois que tu changes tes accords.|AVEC UN AUTRE INSTRUMENT : envoie ses notes MIDI sur cette piste et lance la lecture. Après un tour de boucle, la basse les suit."), TK_FR ("Suivre mes accords"));
-    addInfo (580, 278, TK_FR ("Le son de la basse.||Flèches = son suivant / précédent, ou choisis dans la liste.|808 : la note tient puis s'éteint toute seule, parfaite en trap / drill.|SUB : son continu et rond.|PLUCK / FUNK / HOUSE : notes courtes et rebondissantes.|LONGUEUR = durée des notes. GLIDE = vitesse du glissé. SUB = une couche d'infrabasse une octave en dessous (à sentir plus qu'à entendre). GRAIN = harmoniques qui rendent la basse audible même sur un petit haut-parleur. GLISSANDOS = plus de notes qui glissent (et des sauts d'octave à fond) à la prochaine génération.|↶ REVENIR : remet la ligne de basse d'avant."), "Son");
+    addInfo (124, 64, TK_FR ("Clique la note de ton morceau.||NOTES : Do = C, Do# = C#, Ré = D, Ré# = D#, Mi = E, Fa = F, Fa# = F#, Sol = G, Sol# = G#, La = A, La# = A#, Si = B.|La basse est construite sur cette note et cette gamme. Avec « Suivre mes accords », elles se règlent toutes seules."), TK_FR ("Tonalité"));
+    addInfo (96, 312, TK_FR ("La couleur de la basse.||Majeur = lumineux, Mineur = triste ou sombre, Dorien = mélancolique groovy, Phrygien = oriental, Mixolydien = funky."), "Gamme");
+    addInfo (690, 66, TK_FR ("Le rythme de la basse.||TRAP : longues 808 avec sauts d'octave.|DRILL : 808 qui glissent d'une note à l'autre.|R&B : basse souple qui suit les accords.|AFRO / REGGAETON : rythmes qui dansent.|BOOM BAP : lourd et posé.|HOUSE : notes entre les kicks.|FUNK : notes courtes, octaves qui sautent.|Changer de style choisit aussi un son qui va bien avec."), "Style");
+    addInfo (712, 196, TK_FR ("4 ou 8 mesures.||Longueur de la ligne de basse. Avec « Suivre mes accords », elle prend la longueur que tu choisis ici."), "Mesures");
+    addInfo (854, 256, TK_FR ("La basse se cale sur tes accords, rien à brancher.||AVEC SUPERNOVA : active ce bouton, c'est tout. La basse prend tout de suite la tonalité et les accords de la grille de Supernova, et se refait à chaque fois que tu changes tes accords.|AVEC UN AUTRE INSTRUMENT : envoie ses notes MIDI sur cette piste et lance la lecture. Après un tour de boucle, la basse les suit."), TK_FR ("Suivre mes accords"));
+    addInfo (556, 290, TK_FR ("Le son de la basse.||Flèches = son suivant / précédent, ou choisis dans la liste.|808 : la note tient puis s'éteint toute seule, parfaite en trap / drill.|SUB : son continu et rond.|PLUCK / FUNK / HOUSE : notes courtes et rebondissantes.|LONGUEUR = durée des notes. GLIDE = vitesse du glissé. SUB = une couche d'infrabasse une octave en dessous (à sentir plus qu'à entendre). GRAIN = harmoniques qui rendent la basse audible même sur un petit haut-parleur. GLISSANDOS = plus de notes qui glissent (et des sauts d'octave à fond) à la prochaine génération.|↶ REVENIR : remet la ligne de basse d'avant."), "Son");
     addInfo (472, 610, TK_FR ("Corrige la basse à la main.||Clic dans le vide = ajouter une note. Glisser une note = la déplacer. Bord droit = allonger. Re-clic sur une note sélectionnée = l'effacer. Suppr = effacer.|CMD + C / CMD + V = copier / coller (là où est la souris). CMD + X = couper. CMD + D = dupliquer la sélection juste après. CMD + Z = annuler, CMD + MAJ + Z = refaire (clique d'abord dans la grille).|OCTAVE − / + : toute la basse descend ou monte d'une octave (gardé pour les basses suivantes).|Les lignes allumées sont les notes de ta gamme (la plus claire = la tonique).|CLIC DROIT SUR UNE NOTE : glissé (la 808 glisse depuis la note d'avant, la courbe en pointillés le montre).|LECTURE : pas de bouton Écouter, la basse joue avec Ableton (barre d'espace) et recommence au début de ta boucle."), "Grille MIDI");
-    finishSetup (59, { { 250, 14, 40 }, { 330, 32, 28 }, { 560, 12, 36 } });
+    finishSetup (59, { { 250, 18, 34 }, { 580, 20, 28 } });
     refreshFromState();
     startTimerHz (30);
 }
@@ -98,32 +101,29 @@ BasseEditor::~BasseEditor() { stopTimer(); }
 
 void BasseEditor::layout()
 {
-    keyWheel.setBounds (34, 84, 250, 250);
+    keyWheel.setBounds (52, 82, 236, 236);
     const int sw[] = { 74, 70, 70, 82, 108, 94 };
-    int x = 110, y = 340;
+    int x = 46, y = 330;
     for (int i = 0; i < scaleChips.size(); ++i)
     {
-        if (i == 3) { x = 24; y = 372; }
+        if (i == 3) { x = 46; y = 362; }
         scaleChips[i]->setBounds (x, y, sw[i], 28); x += sw[i] + 4;
     }
-    hole.setBounds (330, 48, 240, 196);
-    prevB.setBounds (330, 272, 34, 30); nextB.setBounds (536, 272, 34, 30);
-    soundBox.setBounds (368, 274, 164, 26);
-    { int kx = 318; for (auto* k : { &lengthK, &glideK, &subK, &distK, &slidesK }) { k->setBounds (kx, 318, 64, 76); kx += 64; } }
-    undoB.setBounds (524, 244, 80, 22);
-    const int stw[] = { 62, 64, 58, 62, 92, 104, 72, 66 };
-    int sx = 650, sy = 84;
-    for (int i = 0; i < styleChips.size(); ++i)
-    {
-        if (sx + stw[i] > 866) { sx = 650; sy += 34; }
-        styleChips[i]->setBounds (sx, sy, stw[i], 30); sx += stw[i] + 4;
-    }
-    barChips[0]->setBounds (650, 216, 104, 30); barChips[1]->setBounds (760, 216, 104, 30);
-    follow.setBounds (650, 256, 214, 30);
-    heartButton.setBounds (650, 332, 26, 26);
-    presetBox.setBounds (682, 332, 182, 26);
+    hole.setBounds (362, 34, 156, 244);
+    undoB.setBounds (530, 250, 80, 22);
+    prevB.setBounds (330, 284, 34, 30); nextB.setBounds (516, 284, 34, 30);
+    soundBox.setBounds (368, 286, 144, 26);
+    { int kx = 312; for (auto* k : { &lengthK, &glideK, &subK, &distK, &slidesK }) { k->setBounds (kx, 320, 64, 78); kx += 64; } }
+    // style pebbles: three rows that fit the lava blob
+    const juce::Rectangle<int> sb[] = { { 640, 86, 64, 28 }, { 708, 86, 66, 28 }, { 778, 86, 66, 28 },
+                                        { 640, 118, 60, 28 }, { 704, 118, 98, 28 }, { 640, 150, 92, 28 }, { 736, 150, 70, 28 }, { 806, 118, 52, 28 } };
+    for (int i = 0; i < styleChips.size() && i < 8; ++i) { styleChips[i]->fontSize = 11.5f; styleChips[i]->setBounds (sb[i]); }
+    barChips[0]->setBounds (640, 214, 104, 28); barChips[1]->setBounds (748, 214, 104, 28);
+    follow.setBounds (640, 250, 212, 30);
+    heartButton.setBounds (640, 330, 26, 26);
+    presetBox.setBounds (672, 330, 180, 26);
     octDown.setBounds (96, 406, 32, 26); octUp.setBounds (164, 406, 32, 26);
-    roll.setBounds (20, 440, 840, 152);
+    roll.setBounds (20, 432, 840, 160);
     badge.setBounds (20, 602, 190, 38);
     dragMidi.setBounds (520, 603, 160, 36);
     dragAudio.setBounds (690, 603, 170, 36);
@@ -131,17 +131,33 @@ void BasseEditor::layout()
 
 void BasseEditor::paintContent (juce::Graphics& g)
 {
-    paintBackgroundAndHeader (g, "Basse", {});
+    namespace sh = tchk::shapes;
+    sky.drawStaticStars (g);
+    // lava blobs holding the controls
+    sh::drawLavaPanel (g, { 22, 58, 296, 346 }, pink, 12);
+    sh::drawLavaPanel (g, { 622, 58, 246, 312 }, pink, 31);
+    sh::drawLavaPanel (g, { 300, 272, 280, 136 }, juce::Colour (0xffff8a3d), 7);
+    // a few drops floating around
+    juce::Random rr (5);
+    for (int i = 0; i < 9; ++i)
+    {
+        const float s2 = 6.0f + rr.nextFloat() * 14.0f;
+        juce::Rectangle<float> d (rr.nextFloat() * 860.0f, 40.0f + rr.nextFloat() * 380.0f, s2, s2 * 1.15f);
+        if (d.getX() > 300 && d.getX() < 600 && d.getY() < 280) continue;
+        g.setColour (pink.withAlpha (0.25f + 0.3f * rr.nextFloat())); g.fillPath (sh::blobPath (d, i, 0.12f, 7));
+    }
     auto dim = [&] (const juce::String& txt, int x, int y, int w = 200, float size = 12.0f, bool bold = true, juce::Justification j = juce::Justification::centredLeft)
     { g.setColour (LNF::textDim); g.setFont (LNF::font (size, bold)); g.drawText (txt, x, y, w, 18, j); };
-    dim (TK_FR ("TONALITÉ"), 24, 64);
-    dim ("GAMME", 24, 345, 80, 11.0f);
-    dim ("STYLE", 650, 64);
-    dim ("MESURES", 650, 196);
+    g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f));
+    g.drawText ("T C H I S K I B I D I", 18, 12, 300, 14, juce::Justification::centredLeft);
+    g.setColour (juce::Colour (0xffffb0c4)); g.setFont (LNF::font (28.0f));
+    g.drawText ("FUSION", 18, 24, 300, 32, juce::Justification::centredLeft);
+    dim (TK_FR ("TONALITÉ"), 46, 64);
+    dim ("GAMME", 46, 312, 80, 11.0f);
+    dim ("STYLE", 640, 66);
+    dim ("MESURES", 640, 196);
     dim ("OCTAVE", 24, 410, 70, 11.0f);
     dim (TK_FR ("Grille MIDI : modifie la basse à la main"), 222, 610, 250, 11.0f, false);
-    g.setColour (pink); g.setFont (LNF::font (12.0f));
-    g.drawText ("NOUVELLE BASSE", 330, 246, 190, 18, juce::Justification::centred);
 }
 
 void BasseEditor::overContent (juce::Graphics& g)
@@ -151,8 +167,8 @@ void BasseEditor::overContent (juce::Graphics& g)
     g.setColour (LNF::textDim); g.setFont (LNF::font (10.5f, false));
     const bool on = audioProcessor.getInt ("follow", 0) != 0;
     juce::String msg = ! on ? TK_FR ("La basse joue sur tes accords.")
-                          : (audioProcessor.followText.isNotEmpty() ? TK_FR ("Suit : ") + audioProcessor.followText : TK_FR ("J'attends tes accords (ouvre Tchiskibidi Accords, ou lance la lecture)..."));
-    g.drawFittedText (msg, 650, 288, 190, 32, juce::Justification::centredLeft, 2);
+                          : (audioProcessor.followText.isNotEmpty() ? TK_FR ("Suit : ") + audioProcessor.followText : TK_FR ("J'attends tes accords (ouvre Tchiskibidi Supernova, ou lance la lecture)..."));
+    g.drawFittedText (msg, 644, 284, 206, 32, juce::Justification::centredLeft, 2);
 }
 
 void BasseEditor::stepSound (int d)
@@ -254,4 +270,5 @@ void BasseEditor::timerCallback()
     if (played != lastPlayed) { hole.pulse (1.0f); lastPlayed = played; }
     if (audioProcessor.player.playing.load()) roll.repaint();
     badge.repaint();
+    hole.repaint();   // the lava keeps moving
 }

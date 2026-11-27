@@ -1,6 +1,6 @@
 juce_add_plugin(TchiskibidiAccords
     COMPANY_NAME "Tchiskibidi"
-    PRODUCT_NAME "Tchiskibidi Accords"
+    PRODUCT_NAME "Tchiskibidi Supernova"
     BUNDLE_ID com.tchiskibidi.accords
     PLUGIN_MANUFACTURER_CODE Tchk
     PLUGIN_CODE Tacc
